@@ -1,0 +1,1006 @@
+/* Print-friendly output: hide chrome and interactive controls, show only the
+   analysis content itself. Applies platform-wide (PMS/AIS/Integrated alike);
+   has no effect on screen rendering. */
+@media print {
+    .app-sidebar, .topbar, .app-footer, .sidebar-backdrop,
+    form, .btn, .no-print {
+        display: none !important;
+    }
+
+    .app-shell {
+        margin-left: 0 !important;
+    }
+
+    .table {
+        font-size: .82rem;
+    }
+}
+
+/* =========================================================================
+   YIELD design system
+   =========================================================================
+   Structural tokens (spacing, neutrals, shadow, radius) are shared by every
+   page. Each system's 7 canonical brand variables (--primary, --primary-hover,
+   --secondary, --accent, --background, --surface, --text) are declared once
+   per theme, sampled directly from that system's logo file. Every other
+   brand-related variable used throughout this stylesheet (--brand*,
+   --sidebar-*) is a pure alias onto those 7 — change a system's identity in
+   exactly one place below and every component (sidebar, buttons, cards,
+   badges, login page, etc.) follows automatically.
+   ========================================================================= */
+
+:root {
+    /* Neutral structural tokens shared by all systems */
+    --muted: #6b7280;
+    --line: #e3e2df;
+    --cream: #faf7f1;
+    --cream-deep: #f2ead9;
+    --shadow-soft: 0 20px 45px rgb(15 23 20 / 10%);
+
+    /* Platform (YIELD) canonical brand variables — used on the public landing
+       page and as the fallback theme before a system-specific class is
+       applied. Warm gold, distinct from all three system palettes below. */
+    --primary: #7c5720;
+    --primary-hover: #5c3f16;
+    --secondary: #a9752c;
+    --accent: #c08b3f;
+    --background: #f3e6d2;
+    --surface: #ffffff;
+    --text: #241d12;
+    --sidebar-muted: #d8c9ab;
+
+    /* Aliases used throughout this file's component rules */
+    --ink: var(--text);
+    --canvas: var(--background);
+    --brand: var(--secondary);
+    --brand-dark: var(--primary-hover);
+    --brand-mid: var(--accent);
+    --brand-soft: var(--background);
+    --sidebar-bg: var(--primary);
+    --sidebar-bg-hover: var(--primary-hover);
+    --sidebar-active-bg: var(--background);
+    --sidebar-active-ink: var(--primary-hover);
+    --sidebar-border: var(--primary-hover);
+}
+
+/* --- PMS: warm brown + golden orange (sampled from the PMS feather logo) - */
+body.theme-pms {
+    --primary: #6c2e12;
+    --primary-hover: #4a1f0c;
+    --secondary: #ed7e04;
+    --accent: #f9af10;
+    --background: #fbf3e7;
+    --surface: #ffffff;
+    --text: #2e2013;
+    --sidebar-muted: #d9c3a8;
+
+    --ink: var(--text);
+    --canvas: var(--background);
+    --brand: var(--secondary);
+    --brand-dark: var(--primary-hover);
+    --brand-mid: var(--accent);
+    --brand-soft: var(--background);
+    --sidebar-bg: var(--primary);
+    --sidebar-bg-hover: var(--primary-hover);
+    --sidebar-active-bg: var(--background);
+    --sidebar-active-ink: var(--primary-hover);
+    --sidebar-border: var(--primary-hover);
+}
+
+/* --- AIS: deep blue + sky blue (sampled from the AIS peso-symbol logo) ---- */
+body.theme-ais {
+    --primary: #0a2d8f;
+    --primary-hover: #061c5e;
+    --secondary: #0256c4;
+    --accent: #07b5fb;
+    --background: #eaf5ff;
+    --surface: #ffffff;
+    --text: #0a1b33;
+    --sidebar-muted: #b7c9e6;
+
+    --ink: var(--text);
+    --canvas: var(--background);
+    --brand: var(--secondary);
+    --brand-dark: var(--primary-hover);
+    --brand-mid: var(--accent);
+    --brand-soft: var(--background);
+    --sidebar-bg: var(--primary);
+    --sidebar-bg-hover: var(--primary-hover);
+    --sidebar-active-bg: var(--background);
+    --sidebar-active-ink: var(--primary-hover);
+    --sidebar-border: var(--primary-hover);
+}
+
+/* --- Integrated: natural green (sampled from the YIELD rooster logo) ------ */
+body.theme-integrated {
+    --primary: #0b4a28;
+    --primary-hover: #073219;
+    --secondary: #1c7a44;
+    --accent: #4fae72;
+    --background: #eff7f1;
+    --surface: #ffffff;
+    --text: #14261c;
+    --sidebar-muted: #b9d4c2;
+
+    --ink: var(--text);
+    --canvas: var(--background);
+    --brand: var(--secondary);
+    --brand-dark: var(--primary-hover);
+    --brand-mid: var(--accent);
+    --brand-soft: var(--background);
+    --sidebar-bg: var(--primary);
+    --sidebar-bg-hover: var(--primary-hover);
+    --sidebar-active-bg: var(--background);
+    --sidebar-active-ink: var(--primary-hover);
+    --sidebar-border: var(--primary-hover);
+}
+
+/* --- User Management: strict monochrome (white/black/gray only) — a
+   deliberately distinct visual language from PMS (brown/orange), AIS (blue),
+   and Integrated (green), so an IT Administrator's screen is never mistaken
+   for an operational system's. No hue anywhere: every var below is a shade
+   of white, gray, or black. The sidebar here is deliberately NOT a solid
+   color block — see the scoped override rules further down — accents are
+   used only for small highlights (active nav, stat-card top border,
+   buttons), never large saturated areas. ------------------------------- */
+body.theme-user-management {
+    --primary: #222222;
+    --primary-hover: #000000;
+    --secondary: #222222;
+    --accent: #a0a0a0;
+    --background: #f5f5f5;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --sidebar-muted: #a0a0a0;
+
+    --ink: var(--text);
+    --canvas: var(--background);
+    --brand: var(--secondary);
+    --brand-dark: var(--primary-hover);
+    --brand-mid: var(--accent);
+    --brand-soft: var(--background);
+    --sidebar-bg: var(--surface);
+    --sidebar-bg-hover: var(--background);
+    --sidebar-active-bg: var(--background);
+    --sidebar-active-ink: var(--primary-hover);
+    --sidebar-border: var(--line);
+}
+
+/* Scoped sidebar override for User Management only: the shared .app-sidebar/
+   .sidebar-brand/.sidebar-link rules above hardcode light text (#fff/#edf0f4)
+   because every other system deliberately uses a solid dark brand-color
+   block. Reusing that here would just repaint the same heavy block gold
+   instead of achieving the landing page's light, neutral look, so these
+   selectors — scoped to body.theme-user-management only — override the
+   hardcoded light-on-dark colors with dark-on-light ones. PMS/AIS/Integrated
+   are unaffected: none of their markup carries this body class. */
+body.theme-user-management .app-sidebar {
+    border-right: 1px solid var(--line);
+    color: var(--text);
+}
+
+body.theme-user-management .sidebar-brand,
+body.theme-user-management .sidebar-brand-copy small {
+    color: var(--text);
+}
+
+body.theme-user-management .sidebar-brand-icon {
+    color: #fff;
+    background: var(--secondary);
+}
+
+body.theme-user-management .sidebar-link {
+    color: var(--text);
+}
+
+body.theme-user-management .sidebar-link i {
+    color: var(--muted);
+}
+
+body.theme-user-management .sidebar-link:hover {
+    color: var(--primary-hover);
+}
+
+body.theme-user-management .sidebar-link.is-active i {
+    color: var(--secondary);
+}
+
+body.theme-user-management .sidebar-caption {
+    color: var(--muted);
+}
+
+body.theme-user-management .sidebar-footer {
+    color: var(--muted);
+}
+
+/* Bootstrap's stock alert/outline-danger colors are red/green/blue — out of
+   bounds for a strict monochrome interface, so they're remapped to grays
+   here. Scoped to this theme only; PMS/AIS/Integrated alerts and delete
+   buttons keep their normal (including red danger) styling untouched. */
+body.theme-user-management .alert-danger,
+body.theme-user-management .alert-success,
+body.theme-user-management .alert-info,
+body.theme-user-management .alert-warning {
+    color: var(--text);
+    background-color: var(--background);
+    border-color: #d0d0d0;
+}
+
+body.theme-user-management .btn-outline-danger {
+    --bs-btn-color: #222222;
+    --bs-btn-border-color: #a0a0a0;
+    --bs-btn-hover-bg: #222222;
+    --bs-btn-hover-border-color: #222222;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: #000000;
+    --bs-btn-active-border-color: #000000;
+}
+
+body {
+    min-height: 100vh;
+    color: var(--ink);
+    background: var(--canvas);
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.app-width {
+    max-width: 1440px;
+}
+
+.app-sidebar {
+    position: fixed;
+    z-index: 1040;
+    inset: 0 auto 0 0;
+    display: flex;
+    width: 258px;
+    flex-direction: column;
+    padding: 1.25rem .9rem 1rem;
+    color: #edf0f4;
+    background: var(--sidebar-bg);
+    transition: background-color .2s ease;
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    padding: .35rem .5rem 1.35rem;
+    color: #fff;
+    text-decoration: none;
+}
+
+.sidebar-brand-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    place-items: center;
+    color: var(--sidebar-active-ink);
+    background: var(--sidebar-active-bg);
+    border-radius: .55rem;
+    font-size: 1.3rem;
+    overflow: hidden;
+}
+
+/* =========================================================================
+   Brand logo images (PMS/AIS/Integrated real logo files).
+   Each context below gives the <img> an explicit pixel max-width/max-height —
+   deliberately NOT a percentage of the parent, and never the bare `img`
+   element selector. A percentage size on an <img> inside a `display: grid;
+   place-items: center` chip does not reliably resolve in every browser,
+   which is what let these logos render at their native (HD) pixel
+   dimensions instead of their intended small badge size. An explicit pixel
+   cap cannot balloon like that regardless of the surrounding layout.
+   ========================================================================= */
+.yield-brand-logo {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+/* Sidebar / header / login brand mark: ~32-40px, inside the 40px chip above */
+.sidebar-logo {
+    max-width: 32px;
+    max-height: 32px;
+}
+
+/* YIELD landing page system cards: 56-72px desktop, inside a 96px chip */
+.system-card-logo {
+    max-width: 72px;
+    max-height: 72px;
+}
+
+/* Integrated placeholder page: matches the landing card sizing */
+.placeholder-logo {
+    max-width: 72px;
+    max-height: 72px;
+}
+
+@media (max-width: 575.98px) {
+    .system-card-logo,
+    .placeholder-logo {
+        max-width: 48px;
+        max-height: 48px;
+    }
+
+    .system-card-icon,
+    .placeholder-icon {
+        width: 72px;
+        height: 72px;
+    }
+}
+
+.sidebar-brand-copy {
+    display: grid;
+    line-height: 1.25;
+}
+
+.sidebar-brand-copy strong {
+    font-size: 1rem;
+}
+
+.sidebar-brand-copy small {
+    margin-top: .2rem;
+    color: var(--sidebar-muted);
+    font-size: .75rem;
+}
+
+.sidebar-nav {
+    display: grid;
+    align-content: start;
+    gap: .3rem;
+}
+
+.sidebar-caption {
+    padding: 1rem .7rem .45rem;
+    color: var(--sidebar-muted);
+    font-size: .67rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+}
+
+.sidebar-link {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: .8rem;
+    padding: .65rem .75rem;
+    color: #dfe3ea;
+    border: 1px solid transparent;
+    border-radius: .4rem;
+    font-size: .9rem;
+    text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.sidebar-link i {
+    width: 1.15rem;
+    flex: 0 0 1.15rem;
+    color: var(--sidebar-muted);
+    font-size: 1.05rem;
+    text-align: center;
+}
+
+.sidebar-link:hover {
+    color: #fff;
+    background: var(--sidebar-bg-hover);
+}
+
+.sidebar-link.is-active {
+    color: var(--sidebar-active-ink);
+    background: var(--sidebar-active-bg);
+    font-weight: 700;
+}
+
+.sidebar-link.is-active i {
+    color: var(--brand);
+}
+
+.sidebar-link.is-disabled {
+    color: #94a0ab;
+    cursor: not-allowed;
+}
+
+.sidebar-link.is-disabled small {
+    margin-left: auto;
+    color: #aeb8c1;
+    font-size: .65rem;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 1rem .7rem .1rem;
+    color: var(--sidebar-muted);
+    border-top: 1px solid var(--sidebar-border);
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.app-shell {
+    min-height: 100vh;
+    margin-left: 258px;
+}
+
+.topbar {
+    position: sticky;
+    z-index: 1020;
+    top: 0;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+}
+
+.topbar-title {
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.section-label,
+.eyebrow {
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.sidebar-toggle {
+    display: none;
+    padding: .25rem .5rem;
+    line-height: 1;
+}
+
+.sidebar-toggle i {
+    font-size: 1.3rem;
+}
+
+.page-heading {
+    margin-bottom: 1.5rem;
+}
+
+.page-heading h1 {
+    margin: .25rem 0 .35rem;
+    font-size: 1.9rem;
+    font-weight: 700;
+}
+
+.page-heading p {
+    margin: 0;
+    color: var(--muted);
+}
+
+.stat-card,
+.content-panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+}
+
+.stat-card {
+    height: 100%;
+    padding: 1rem 1.1rem;
+    border-top: 3px solid var(--brand);
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: .82rem;
+}
+
+.stat-value {
+    margin-top: .3rem;
+    font-size: 1.65rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.content-panel {
+    overflow: hidden;
+}
+
+.panel-heading {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.panel-body {
+    padding: 1.25rem;
+}
+
+.table thead th {
+    color: var(--muted);
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.form-label {
+    font-weight: 600;
+}
+
+.detail-label {
+    margin-bottom: .2rem;
+    color: var(--muted);
+    font-size: .78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.detail-value {
+    overflow-wrap: anywhere;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--brand);
+    --bs-btn-border-color: var(--brand);
+    --bs-btn-hover-bg: var(--brand-dark);
+    --bs-btn-hover-border-color: var(--brand-dark);
+    --bs-btn-active-bg: var(--brand-dark);
+    --bs-btn-active-border-color: var(--brand-dark);
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--brand-dark);
+    --bs-btn-border-color: var(--brand);
+    --bs-btn-hover-bg: var(--brand);
+    --bs-btn-hover-border-color: var(--brand);
+    --bs-btn-active-bg: var(--brand-dark);
+    --bs-btn-active-border-color: var(--brand-dark);
+}
+
+.role-note {
+    border-left: 3px solid #d6a23a;
+}
+
+.app-footer {
+    color: var(--muted);
+    font-size: .75rem;
+}
+
+.dashboard-module-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.2rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    text-decoration: none;
+}
+
+.dashboard-module-link:hover {
+    border-color: var(--brand);
+    color: var(--brand-dark);
+}
+
+.dashboard-module-link i {
+    color: var(--brand);
+    font-size: 1.2rem;
+}
+
+.sidebar-backdrop {
+    display: none;
+}
+
+/* =========================================================================
+   Public pages: the YIELD landing page, system login pages, and the
+   Integrated placeholder. These are separate, self-contained page shells
+   (not the app chrome above) and default to a soft neutral/cream backdrop;
+   the login card and landing cards still pick up each system's --brand via
+   the same theme classes above.
+   ========================================================================= */
+
+.public-body {
+    min-height: 100vh;
+    color: var(--ink);
+    background: var(--cream);
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.public-nav {
+    padding: 1.25rem 0;
+}
+
+.public-nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.public-brand {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.public-brand-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    place-items: center;
+    color: #fff;
+    background: var(--brand);
+    border-radius: .6rem;
+    font-size: 1.2rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.public-nav-link {
+    color: var(--brand-dark);
+    font-weight: 600;
+    font-size: .92rem;
+    text-decoration: none;
+}
+
+.public-nav-link:hover {
+    text-decoration: underline;
+}
+
+.hero {
+    position: relative;
+    padding: 3.5rem 0 3rem;
+    overflow: hidden;
+}
+
+.hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 780px;
+}
+
+.hero-eyebrow {
+    margin-bottom: .6rem;
+    color: var(--brand-mid);
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.hero-title {
+    margin: 0 0 .5rem;
+    color: var(--brand-dark);
+    font-size: 3rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+}
+
+.hero-subtitle {
+    margin: 0 0 1rem;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.hero-description {
+    max-width: 640px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.hero-decor {
+    position: absolute;
+    top: -3rem;
+    right: -2rem;
+    color: var(--brand);
+    font-size: 16rem;
+    line-height: 1;
+    opacity: .07;
+    transform: rotate(12deg);
+    pointer-events: none;
+}
+
+.systems {
+    padding: 1rem 0 4rem;
+}
+
+.systems-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 1.5rem;
+}
+
+.system-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.75rem 1.6rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--card-brand, var(--brand));
+    border-radius: 1rem;
+    box-shadow: var(--shadow-soft);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.system-card:hover {
+    box-shadow: 0 28px 55px rgb(15 23 20 / 14%);
+    transform: translateY(-4px);
+}
+
+.system-card-icon {
+    display: grid;
+    width: 96px;
+    height: 96px;
+    margin-bottom: 1.1rem;
+    place-items: center;
+    overflow: hidden;
+    color: var(--card-brand-dark, var(--brand-dark));
+    background: var(--card-brand-soft, var(--brand-soft));
+    border-radius: .8rem;
+    font-size: 1.5rem;
+}
+
+.system-card h2 {
+    margin: 0 0 .5rem;
+    font-size: 1.12rem;
+    font-weight: 700;
+}
+
+.system-card p {
+    margin: 0 0 1.4rem;
+    color: var(--muted);
+    font-size: .9rem;
+    line-height: 1.55;
+    flex-grow: 1;
+}
+
+.system-card-btn {
+    align-self: stretch;
+    text-align: center;
+    --bs-btn-bg: var(--card-brand, var(--brand));
+    --bs-btn-border-color: var(--card-brand, var(--brand));
+    --bs-btn-hover-bg: var(--card-brand-dark, var(--brand-dark));
+    --bs-btn-hover-border-color: var(--card-brand-dark, var(--brand-dark));
+}
+
+.system-card--pms {
+    --card-brand: #ed7e04;
+    --card-brand-dark: #6c2e12;
+    --card-brand-soft: #fbf3e7;
+}
+
+.system-card--ais {
+    --card-brand: #0256c4;
+    --card-brand-dark: #0a2d8f;
+    --card-brand-soft: #eaf5ff;
+}
+
+.system-card--integrated {
+    --card-brand: #1c7a44;
+    --card-brand-dark: #0b4a28;
+    --card-brand-soft: #eff7f1;
+}
+
+.public-footer {
+    padding: 1.5rem 0 2.5rem;
+    color: var(--muted);
+    font-size: .82rem;
+    text-align: center;
+}
+
+/* --- System login pages --------------------------------------------------- */
+
+.auth-body {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 1.5rem;
+    background: var(--cream);
+}
+
+.auth-decor {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background:
+        radial-gradient(circle at 12% 15%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 40%),
+        radial-gradient(circle at 88% 20%, color-mix(in srgb, var(--brand-mid) 20%, transparent), transparent 38%),
+        radial-gradient(circle at 20% 92%, rgb(242 234 217 / 90%), transparent 45%);
+    pointer-events: none;
+}
+
+.auth-shell {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+}
+
+.auth-card {
+    padding: 2.25rem 2.25rem 1.85rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--brand);
+    border-radius: 1.1rem;
+    box-shadow: var(--shadow-soft);
+}
+
+.auth-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .8rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.auth-heading {
+    margin: 0 0 .3rem;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.auth-subheading {
+    margin: 0 0 1.5rem;
+    color: var(--muted);
+    font-size: .88rem;
+    text-align: center;
+}
+
+.auth-input-group .input-group-text {
+    color: var(--brand-dark);
+    background: var(--brand-soft);
+    border-color: var(--line);
+}
+
+.auth-input-group .form-control {
+    border-color: var(--line);
+}
+
+.auth-toggle-password {
+    border-color: var(--line);
+    color: var(--muted);
+}
+
+.auth-submit {
+    margin-top: .25rem;
+}
+
+.auth-back-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    margin-top: 1.5rem;
+    color: var(--muted);
+    font-size: .85rem;
+    text-decoration: none;
+}
+
+.auth-back-link:hover {
+    color: var(--brand-dark);
+}
+
+/* --- Integrated placeholder ------------------------------------------------ */
+
+.placeholder-shell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1.5rem;
+}
+
+.placeholder-card {
+    width: 100%;
+    max-width: 460px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--brand);
+    border-radius: 1.1rem;
+    box-shadow: var(--shadow-soft);
+}
+
+.placeholder-icon {
+    display: grid;
+    width: 96px;
+    height: 96px;
+    margin: 0 auto 1.25rem;
+    place-items: center;
+    overflow: hidden;
+    color: var(--brand-dark);
+    background: var(--brand-soft);
+    border-radius: 1rem;
+    font-size: 1.9rem;
+}
+
+.placeholder-card h1 {
+    margin: 0 0 .6rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.placeholder-card p {
+    margin: 0 0 1.5rem;
+    color: var(--muted);
+    font-size: .92rem;
+    line-height: 1.55;
+}
+
+@media (max-width: 575.98px) {
+    .hero-title {
+        font-size: 2.2rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .hero-decor {
+        font-size: 10rem;
+    }
+
+    .auth-card {
+        padding: 1.75rem 1.5rem 1.4rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .app-sidebar {
+        box-shadow: 8px 0 24px rgb(15 23 20 / 16%);
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+    }
+
+    body.sidebar-open .app-sidebar {
+        transform: translateX(0);
+    }
+
+    .app-shell {
+        margin-left: 0;
+    }
+
+    .sidebar-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .sidebar-backdrop:not([hidden]) {
+        position: fixed;
+        z-index: 1030;
+        inset: 0;
+        display: block;
+        background: rgb(15 23 20 / 42%);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .section-label {
+        font-size: .62rem;
+    }
+
+    .page-heading h1 {
+        font-size: 1.55rem;
+    }
+
+    .panel-body {
+        padding: 1rem;
+    }
+}

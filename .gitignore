@@ -1,0 +1,25 @@
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config.local.php
+
+# Dependencies
+vendor/
+node_modules/
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Database exports and backups
+*.sql
+*.sql.gz
+*.bak
+
+# Local uploaded files (review if your app uses this folder)
+uploads/
+
