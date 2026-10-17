@@ -255,60 +255,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
             }
 
             $pdo->beginTransaction();
-            $lock = $pdo->prepare('SELECT quantity FROM poultry_inventory WHERE item_id = ? AND deleted_at IS NULL FOR UPDATE');
-            $lock->execute([$itemId]);
-            $quantityBefore = $lock->fetchColumn();
-            if ($quantityBefore === false) {
-                $pdo->rollBack();
-                set_flash('danger', 'The selected inventory item could not be found.');
-                redirect_to('index.php');
-            }
-
-            $delta = $direction === 'add' ? $adjustment : '-' . $adjustment;
-            $statement = $pdo->prepare(
-                "UPDATE poultry_inventory
-                 SET status = CASE
-                         WHEN quantity + :status_delta <= 0 THEN 'Out of Stock'
-                         WHEN quantity + :status_delta_low <= reorder_level THEN 'Low Stock'
-                         ELSE 'Available'
-                     END
-                     , quantity = quantity + :delta
-                 WHERE item_id = :item_id AND quantity + :guard_delta >= 0"
-            );
-            $statement->execute([
-                'delta' => $delta,
-                'status_delta' => $delta,
-                'status_delta_low' => $delta,
-                'item_id' => $itemId,
-                'guard_delta' => $delta,
-            ]);
-
-            if ($statement->rowCount() === 0) {
+            try {
+                $adjustmentId = pms_apply_inventory_adjustment(
+                    $pdo, $itemId, $direction === 'add' ? 'Add' : 'Reduce', $adjustment, $reason, 'Manual', null
+                );
+                $pdo->commit();
+            } catch (RuntimeException $exception) {
                 $pdo->rollBack();
                 set_flash('danger', 'The reduction exceeds the available stock. Quantity was not changed.');
                 redirect_to('index.php?action=view&id=' . $itemId);
             }
 
-            $quantityAfter = number_format((float) $quantityBefore + ($direction === 'add' ? (float) $adjustment : -(float) $adjustment), 2, '.', '');
-            $historyStatement = $pdo->prepare(
-                'INSERT INTO inventory_adjustments
-                    (item_id, direction, quantity, quantity_before, quantity_after, reason, source, adjusted_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            );
-            $historyStatement->execute([
-                $itemId,
-                $direction === 'add' ? 'Add' : 'Reduce',
-                $adjustment,
-                $quantityBefore,
-                $quantityAfter,
-                $reason,
-                'Manual',
-                current_username(),
-            ]);
-
-            $pdo->commit();
             audit_pms_action($pdo, 'UPDATE', 'poultry_inventory', $itemId);
-            audit_pms_action($pdo, 'CREATE', 'inventory_adjustments', (int) $pdo->lastInsertId());
+            audit_pms_action($pdo, 'CREATE', 'inventory_adjustments', $adjustmentId);
             $directionLabel = $direction === 'add' ? 'added to' : 'reduced from';
             set_flash('success', 'Stock ' . $directionLabel . ' the item and recorded in its stock history.');
             redirect_to('index.php?action=view&id=' . $itemId);

@@ -10,6 +10,7 @@ function flock_form_data(array $source): array
         'batch_code' => trim((string) ($source['batch_code'] ?? '')),
         'breed' => trim((string) ($source['breed'] ?? '')),
         'start_date' => trim((string) ($source['start_date'] ?? '')),
+        'age_at_arrival_days' => trim((string) ($source['age_at_arrival_days'] ?? '0')),
         'initial_birds' => trim((string) ($source['initial_birds'] ?? '')),
         'current_birds' => trim((string) ($source['current_birds'] ?? '')),
         'status' => trim((string) ($source['status'] ?? 'Active')),
@@ -40,6 +41,11 @@ function validate_flock(array $flock): array
         || ($dateErrors !== false && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))
         || $date->format('Y-m-d') !== $flock['start_date']) {
         $errors['start_date'] = 'Enter a valid start date.';
+    }
+
+    $ageAtArrival = filter_var($flock['age_at_arrival_days'], FILTER_VALIDATE_INT);
+    if ($flock['age_at_arrival_days'] === '' || $ageAtArrival === false || $ageAtArrival < 0) {
+        $errors['age_at_arrival_days'] = 'Age at arrival must be a whole number of zero or more days.';
     }
 
     $initialBirds = filter_var($flock['initial_birds'], FILTER_VALIDATE_INT);
@@ -135,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                         $statement = $pdo->prepare(
                             'UPDATE flocks
                              SET batch_code = :batch_code, breed = :breed, start_date = :start_date,
-                                 initial_birds = :initial_birds, current_birds = :current_birds,
+                                 age_at_arrival_days = :age_at_arrival_days, initial_birds = :initial_birds, current_birds = :current_birds,
                                  status = :status, notes = :notes
                              WHERE flock_id = :flock_id AND deleted_at IS NULL'
                         );
@@ -145,9 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                     } else {
                         $statement = $pdo->prepare(
                             'INSERT INTO flocks
-                                (batch_code, breed, start_date, initial_birds, current_birds, status, notes)
+                                (batch_code, breed, start_date, age_at_arrival_days, initial_birds, current_birds, status, notes)
                              VALUES
-                                (:batch_code, :breed, :start_date, :initial_birds, :current_birds, :status, :notes)'
+                                (:batch_code, :breed, :start_date, :age_at_arrival_days, :initial_birds, :current_birds, :status, :notes)'
                         );
                         $statement->execute($formData);
                         audit_pms_action($pdo, 'CREATE', 'flocks', (int) $pdo->lastInsertId());
@@ -306,7 +312,7 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 $statusFilter = '';
             }
 
-            $sql = 'SELECT flock_id, batch_code, breed, start_date, initial_birds, current_birds, status
+            $sql = 'SELECT flock_id, batch_code, breed, start_date, age_at_arrival_days, initial_birds, current_birds, status
                     FROM flocks';
             if ($conditions !== []) {
                 $sql .= ' WHERE ' . implode(' AND ', $conditions);
@@ -382,6 +388,12 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <?php if (isset($errors['start_date'])): ?><div class="invalid-feedback"><?= h($errors['start_date']) ?></div><?php endif; ?>
                     </div>
                     <div class="col-md-3">
+                        <label class="form-label" for="age_at_arrival_days">Age at arrival (days)</label>
+                        <input type="number" class="form-control<?= isset($errors['age_at_arrival_days']) ? ' is-invalid' : '' ?>" id="age_at_arrival_days" name="age_at_arrival_days" min="0" step="1" value="<?= h($formData['age_at_arrival_days']) ?>">
+                        <div class="form-text">0 if the birds were day-old chicks when this batch started.</div>
+                        <?php if (isset($errors['age_at_arrival_days'])): ?><div class="invalid-feedback"><?= h($errors['age_at_arrival_days']) ?></div><?php endif; ?>
+                    </div>
+                    <div class="col-md-3">
                         <label class="form-label" for="initial_birds">Initial birds <span class="text-danger">*</span></label>
                         <input type="number" class="form-control<?= isset($errors['initial_birds']) ? ' is-invalid' : '' ?>" id="initial_birds" name="initial_birds" min="1" step="1" required value="<?= h($formData['initial_birds']) ?>">
                         <?php if (isset($errors['initial_birds'])): ?><div class="invalid-feedback"><?= h($errors['initial_birds']) ?></div><?php endif; ?>
@@ -440,12 +452,16 @@ require __DIR__ . '/../../shared/includes/header.php';
         <div class="panel-body">
             <div class="row g-4">
                 <?php
+                $age = pms_flock_age($flock['start_date'], (int) $flock['age_at_arrival_days']);
+                $mortalityToDate = max(0, (int) $flock['initial_birds'] - (int) $flock['current_birds']);
                 $details = [
                     'Flock ID' => $flock['flock_id'],
                     'Batch code' => $flock['batch_code'],
                     'Breed' => $flock['breed'],
                     'Start date' => $flock['start_date'],
+                    'Age' => number_format($age['days']) . ' days (' . number_format($age['weeks'], 1) . ' weeks)',
                     'Initial birds' => number_format((int) $flock['initial_birds']),
+                    'Mortality to date' => number_format($mortalityToDate),
                     'Current birds' => number_format((int) $flock['current_birds']),
                     'Created date' => $flock['created_at'],
                 ];
@@ -558,6 +574,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <th scope="col">Batch code</th>
                         <th scope="col">Breed</th>
                         <th scope="col">Start date</th>
+                        <th scope="col">Age</th>
                         <th scope="col" class="text-end">Initial birds</th>
                         <th scope="col" class="text-end">Current birds</th>
                         <th scope="col">Status</th>
@@ -566,7 +583,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </thead>
                 <tbody>
                     <?php if ($records === []): ?>
-                        <tr><td colspan="8" class="text-center text-secondary py-5">No flock records match these filters.</td></tr>
+                        <tr><td colspan="9" class="text-center text-secondary py-5">No flock records match these filters.</td></tr>
                     <?php else: ?>
                         <?php foreach ($records as $record): ?>
                             <tr>
@@ -574,6 +591,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                                 <td class="fw-semibold"><?= h($record['batch_code']) ?></td>
                                 <td><?= h($record['breed']) ?></td>
                                 <td><?= h($record['start_date']) ?></td>
+                                <td><?php $rowAge = pms_flock_age($record['start_date'], (int) $record['age_at_arrival_days']); ?><?= number_format($rowAge['days']) ?> days</td>
                                 <td class="text-end"><?= number_format((int) $record['initial_birds']) ?></td>
                                 <td class="text-end"><?= number_format((int) $record['current_birds']) ?></td>
                                 <td><span class="badge text-bg-<?= h(flock_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>

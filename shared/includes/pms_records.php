@@ -1,6 +1,187 @@
 <?php
 declare(strict_types=1);
 
+// Disease early-warning thresholds (3.4) — computed live on every call, never
+// stored, so changing these takes effect immediately with no migration.
+const PMS_DISEASE_CLUSTER_MIN_RECORDS = 2;      // (a) this many Disease records...
+const PMS_DISEASE_CLUSTER_WINDOW_DAYS = 7;      // ...for the same flock, within this many days
+const PMS_HIGH_MORTALITY_RATE_PERCENT = 1.0;    // (b) 7-day mortality above this % of current_birds
+const PMS_HIGH_MORTALITY_WINDOW_DAYS = 7;
+const PMS_STALE_HEALTH_CASE_DAYS = 7;           // (c) still Observed/Under Treatment longer than this
+
+/**
+ * Computed live from flocks/health_records/production_records — no alert is
+ * ever stored. Returns ['disease_clusters' => [...], 'high_mortality' => [...],
+ * 'stale_cases' => [...]], each possibly empty.
+ */
+function pms_health_alerts(PDO $pdo): array
+{
+    $diseaseClusters = $pdo->prepare(
+        "SELECT h.flock_id, f.batch_code, COUNT(*) AS disease_count
+         FROM health_records h JOIN flocks f ON f.flock_id = h.flock_id
+         WHERE h.deleted_at IS NULL AND f.deleted_at IS NULL AND h.record_type = 'Disease'
+           AND h.record_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         GROUP BY h.flock_id, f.batch_code
+         HAVING disease_count >= ?
+         ORDER BY disease_count DESC"
+    );
+    $diseaseClusters->execute([PMS_DISEASE_CLUSTER_WINDOW_DAYS, PMS_DISEASE_CLUSTER_MIN_RECORDS]);
+
+    $highMortality = $pdo->prepare(
+        "SELECT p.flock_id, f.batch_code, f.current_birds, SUM(p.mortality_count) AS mortality_7d,
+                (SUM(p.mortality_count) / f.current_birds * 100) AS mortality_rate
+         FROM production_records p JOIN flocks f ON f.flock_id = p.flock_id
+         WHERE p.deleted_at IS NULL AND f.deleted_at IS NULL AND f.current_birds > 0
+           AND p.record_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         GROUP BY p.flock_id, f.batch_code, f.current_birds
+         HAVING mortality_rate > ?
+         ORDER BY mortality_rate DESC"
+    );
+    $highMortality->execute([PMS_HIGH_MORTALITY_WINDOW_DAYS, PMS_HIGH_MORTALITY_RATE_PERCENT]);
+
+    $staleCases = $pdo->prepare(
+        "SELECT h.health_id, h.flock_id, f.batch_code, h.record_type, h.status, h.record_date,
+                DATEDIFF(CURDATE(), h.record_date) AS days_open
+         FROM health_records h JOIN flocks f ON f.flock_id = h.flock_id
+         WHERE h.deleted_at IS NULL AND f.deleted_at IS NULL
+           AND h.status IN ('Observed', 'Under Treatment')
+           AND DATEDIFF(CURDATE(), h.record_date) > ?
+         ORDER BY days_open DESC"
+    );
+    $staleCases->execute([PMS_STALE_HEALTH_CASE_DAYS]);
+
+    return [
+        'disease_clusters' => $diseaseClusters->fetchAll(),
+        'high_mortality' => $highMortality->fetchAll(),
+        'stale_cases' => $staleCases->fetchAll(),
+    ];
+}
+
+/**
+ * A flock's age is always computed from start_date (plus age_at_arrival_days,
+ * for birds that weren't day-old chicks when the batch started) — never
+ * stored. Returns ['days' => int, 'weeks' => float].
+ */
+function pms_flock_age(string $startDate, int $ageAtArrivalDays = 0): array
+{
+    $start = new DateTimeImmutable($startDate);
+    $today = new DateTimeImmutable('today');
+    $interval = $start->diff($today);
+    $daysSinceStart = $interval->invert === 1 ? 0 : $interval->days;
+    $days = max(0, $daysSinceStart + $ageAtArrivalDays);
+
+    return ['days' => $days, 'weeks' => round($days / 7, 1)];
+}
+
+/**
+ * Adjusts a flock's current_birds by $delta (positive adds birds back,
+ * negative removes them — e.g. a mortality count being recorded, edited, or
+ * reversed). Locks the row first so concurrent adjustments can't race past
+ * each other. Throws if the result would go below zero rather than letting
+ * it happen — the caller is expected to be inside a transaction and to roll
+ * back on this exception.
+ */
+function pms_adjust_flock_birds(PDO $pdo, int $flockId, int $delta): void
+{
+    if ($delta === 0) {
+        return;
+    }
+    $statement = $pdo->prepare('SELECT current_birds FROM flocks WHERE flock_id = ? AND deleted_at IS NULL FOR UPDATE');
+    $statement->execute([$flockId]);
+    $current = $statement->fetchColumn();
+    if ($current === false) {
+        return;
+    }
+    $newCount = (int) $current + $delta;
+    if ($newCount < 0) {
+        throw new RuntimeException('This would reduce the flock\'s current birds below zero.');
+    }
+    $pdo->prepare('UPDATE flocks SET current_birds = ? WHERE flock_id = ?')->execute([$newCount, $flockId]);
+}
+
+/**
+ * The one place quantity actually changes on poultry_inventory, and the one
+ * place a row is written to inventory_adjustments — used by the manual
+ * "Adjust stock" action and by the usage-based deductions from Health
+ * Records / Farm Activities (3.5), so the status recalculation and history
+ * logging can't drift between those call sites. Caller is expected to be
+ * inside a transaction if this write needs to be atomic with something else
+ * (e.g. saving the health/activity record it was triggered from); throws
+ * RuntimeException — which the caller should let roll that transaction back
+ * — if a "Reduce" would take quantity below zero.
+ */
+function pms_apply_inventory_adjustment(
+    PDO $pdo,
+    int $itemId,
+    string $direction,
+    string $quantity,
+    string $reason,
+    string $source,
+    ?int $sourceId,
+    ?string $adjustedBy = null
+): int {
+    if (!in_array($direction, ['Add', 'Reduce'], true)) {
+        throw new InvalidArgumentException('Invalid adjustment direction.');
+    }
+
+    $lock = $pdo->prepare('SELECT quantity FROM poultry_inventory WHERE item_id = ? AND deleted_at IS NULL FOR UPDATE');
+    $lock->execute([$itemId]);
+    $quantityBefore = $lock->fetchColumn();
+    if ($quantityBefore === false) {
+        throw new RuntimeException('The inventory item could not be found.');
+    }
+
+    $delta = $direction === 'Add' ? $quantity : '-' . $quantity;
+    $statement = $pdo->prepare(
+        "UPDATE poultry_inventory
+         SET status = CASE
+                 WHEN quantity + :status_delta <= 0 THEN 'Out of Stock'
+                 WHEN quantity + :status_delta_low <= reorder_level THEN 'Low Stock'
+                 ELSE 'Available'
+             END
+             , quantity = quantity + :delta
+         WHERE item_id = :item_id AND quantity + :guard_delta >= 0"
+    );
+    $statement->execute([
+        'delta' => $delta, 'status_delta' => $delta, 'status_delta_low' => $delta,
+        'item_id' => $itemId, 'guard_delta' => $delta,
+    ]);
+    if ($statement->rowCount() === 0) {
+        throw new RuntimeException('This would reduce inventory below zero.');
+    }
+
+    $quantityAfter = number_format((float) $quantityBefore + ($direction === 'Add' ? (float) $quantity : -(float) $quantity), 2, '.', '');
+    $historyStatement = $pdo->prepare(
+        'INSERT INTO inventory_adjustments
+            (item_id, direction, quantity, quantity_before, quantity_after, reason, source, source_id, adjusted_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $historyStatement->execute([
+        $itemId, $direction, $quantity, $quantityBefore, $quantityAfter, $reason, $source, $sourceId,
+        $adjustedBy ?? current_username(),
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+/**
+ * Finds the active inventory item whose name matches $itemName exactly
+ * (case-insensitive) — used to offer "deduct from inventory" when a Health
+ * Record's medicine_or_vaccine, or a Farm Activity's item field, names a
+ * real stock item. Returns null if there's no match.
+ */
+function pms_find_inventory_item_by_name(PDO $pdo, string $itemName): ?array
+{
+    if ($itemName === '') {
+        return null;
+    }
+    $statement = $pdo->prepare('SELECT * FROM poultry_inventory WHERE deleted_at IS NULL AND LOWER(item_name) = LOWER(?)');
+    $statement->execute([$itemName]);
+    $row = $statement->fetch();
+
+    return $row === false ? null : $row;
+}
+
 function pms_record_types(): array
 {
     return [
@@ -52,10 +233,33 @@ function pms_soft_delete(PDO $pdo, string $type, int $recordId): bool
     }
     $table = $types[$type]['table'];
     $idColumn = $types[$type]['id'];
-    $statement = $pdo->prepare("UPDATE `$table` SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE `$idColumn` = ? AND deleted_at IS NULL");
-    $statement->execute([current_username(), $recordId]);
-    if ($statement->rowCount() !== 1) {
-        return false;
+
+    // A deleted production record no longer counts, so its mortality's effect
+    // on the flock's current_birds must be reversed (birds added back) —
+    // done in the same transaction as the soft delete itself.
+    $reverseMortality = null;
+    if ($type === 'production_records') {
+        $lookup = $pdo->prepare('SELECT flock_id, mortality_count FROM production_records WHERE production_id = ? AND deleted_at IS NULL');
+        $lookup->execute([$recordId]);
+        $reverseMortality = $lookup->fetch();
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $statement = $pdo->prepare("UPDATE `$table` SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE `$idColumn` = ? AND deleted_at IS NULL");
+        $statement->execute([current_username(), $recordId]);
+        if ($statement->rowCount() !== 1) {
+            $pdo->rollBack();
+
+            return false;
+        }
+        if ($reverseMortality !== null && $reverseMortality !== false) {
+            pms_adjust_flock_birds($pdo, (int) $reverseMortality['flock_id'], (int) $reverseMortality['mortality_count']);
+        }
+        $pdo->commit();
+    } catch (RuntimeException $exception) {
+        $pdo->rollBack();
+        throw $exception;
     }
     pms_audit_action($pdo, 'SOFT_DELETE', $type, $recordId);
 
@@ -111,10 +315,33 @@ function pms_restore_record(PDO $pdo, string $type, int $recordId): bool
         }
     }
 
-    $statement = $pdo->prepare("UPDATE `$table` SET deleted_at = NULL, deleted_by = NULL WHERE `$idColumn` = ? AND deleted_at IS NOT NULL");
-    $statement->execute([$recordId]);
-    if ($statement->rowCount() !== 1) {
-        return false;
+    // Restoring a production record re-applies its mortality to the flock,
+    // which can legitimately be refused if other changes since it was
+    // deleted mean the flock no longer has that many birds to lose — done in
+    // the same transaction as the restore itself.
+    $reapplyMortality = null;
+    if ($type === 'production_records') {
+        $lookup = $pdo->prepare('SELECT flock_id, mortality_count FROM production_records WHERE production_id = ? AND deleted_at IS NOT NULL');
+        $lookup->execute([$recordId]);
+        $reapplyMortality = $lookup->fetch();
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $statement = $pdo->prepare("UPDATE `$table` SET deleted_at = NULL, deleted_by = NULL WHERE `$idColumn` = ? AND deleted_at IS NOT NULL");
+        $statement->execute([$recordId]);
+        if ($statement->rowCount() !== 1) {
+            $pdo->rollBack();
+
+            return false;
+        }
+        if ($reapplyMortality !== null && $reapplyMortality !== false) {
+            pms_adjust_flock_birds($pdo, (int) $reapplyMortality['flock_id'], -(int) $reapplyMortality['mortality_count']);
+        }
+        $pdo->commit();
+    } catch (RuntimeException $exception) {
+        $pdo->rollBack();
+        throw new RuntimeException('Cannot restore: the flock no longer has enough birds to account for this record\'s mortality count.');
     }
     pms_audit_action($pdo, 'RESTORE', $type, $recordId);
 

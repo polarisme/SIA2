@@ -94,7 +94,7 @@ if (isset($_GET['type'])) {
     $flockColumn = null;
     switch ($type) {
         case 'flocks':
-            $columns = ['Batch Code' => 'batch_code', 'Breed' => 'breed', 'Start Date' => 'start_date', 'Initial Birds' => 'initial_birds', 'Current Birds' => 'current_birds', 'Status' => 'status'];
+            $columns = ['Batch Code' => 'batch_code', 'Breed' => 'breed', 'Start Date' => 'start_date', 'Age (Days)' => 'age_days', 'Age (Weeks)' => 'age_weeks', 'Initial Birds' => 'initial_birds', 'Current Birds' => 'current_birds', 'Status' => 'status'];
             $conditions = ['deleted_at IS NULL'];
             $parameters = [];
             if ($dateFrom !== '' || $dateTo !== '') {
@@ -110,7 +110,11 @@ if (isset($_GET['type'])) {
                 if (!in_array($status, ['Active', 'Completed', 'Sold', 'Terminated'], true)) { http_response_code(400); exit('Invalid flock status.'); }
                 $conditions[] = 'status = ?'; $parameters[] = $status;
             }
-            $sql = 'SELECT batch_code, breed, start_date, initial_birds, current_birds, status FROM flocks WHERE ' . implode(' AND ', $conditions) . ' ORDER BY start_date DESC';
+            $sql = "SELECT batch_code, breed, start_date,
+                        (DATEDIFF(CURDATE(), start_date) + age_at_arrival_days) AS age_days,
+                        ROUND((DATEDIFF(CURDATE(), start_date) + age_at_arrival_days) / 7, 1) AS age_weeks,
+                        initial_birds, current_birds, status
+                    FROM flocks WHERE " . implode(' AND ', $conditions) . ' ORDER BY start_date DESC';
             break;
         case 'inventory':
             $columns = ['Item Code' => 'item_code', 'Item Name' => 'item_name', 'Category' => 'category', 'Quantity' => 'quantity', 'Unit' => 'unit', 'Reorder Level' => 'reorder_level', 'Unit Cost' => 'unit_cost', 'Stock Status' => 'status'];

@@ -15,9 +15,11 @@ $dashboardCounts = [
 	'eggs_last_7_days' => 0,
 ];
 $dashboardError = null;
+$healthAlerts = ['disease_clusters' => [], 'high_mortality' => [], 'stale_cases' => []];
 
 try {
 	$pdo = database_connection();
+	$healthAlerts = pms_health_alerts($pdo);
 
 	$flockRow = $pdo->query(
 		"SELECT COUNT(*) AS active_flocks, COALESCE(SUM(current_birds), 0) AS current_birds
@@ -96,6 +98,14 @@ require __DIR__ . '/../shared/includes/header.php';
 		</a>
 	</div>
 </div>
+
+<?php $alertCount = count($healthAlerts['disease_clusters']) + count($healthAlerts['high_mortality']) + count($healthAlerts['stale_cases']); ?>
+<?php if ($alertCount > 0): ?>
+	<div class="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+		<span><strong>Disease early-warning:</strong> <?= $alertCount ?> alert<?= $alertCount === 1 ? '' : 's' ?> need attention (disease clusters, high mortality, or long-open cases).</span>
+		<a class="btn btn-sm btn-outline-danger" href="<?= h(app_url('/pms/health/index.php')) ?>">View details</a>
+	</div>
+<?php endif; ?>
 
 <section class="mb-4" aria-labelledby="modules-heading">
 	<div class="panel-heading px-0"><h2 class="h5 mb-0" id="modules-heading">Management</h2></div>

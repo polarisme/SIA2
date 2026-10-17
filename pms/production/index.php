@@ -177,29 +177,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
             ];
 
             if ($isEditing) {
-                $statement = $pdo->prepare(
-                    'UPDATE production_records
-                     SET flock_id = :flock_id, record_date = :record_date, eggs_produced = :eggs_produced,
-                         good_eggs = :good_eggs, damaged_eggs = :damaged_eggs, sample_size = :sample_size,
-                         average_weight = :average_weight, mortality_count = :mortality_count, remarks = :remarks
-                     WHERE production_id = :production_id AND deleted_at IS NULL'
-                );
-                $statement->execute($values + ['production_id' => $productionId]);
-                audit_pms_action($pdo, 'UPDATE', 'production_records', $productionId);
-                set_flash('success', 'Production record updated.');
-                redirect_to('index.php');
-            }
+                $priorStatement = $pdo->prepare('SELECT flock_id, mortality_count FROM production_records WHERE production_id = ? AND deleted_at IS NULL');
+                $priorStatement->execute([$productionId]);
+                $prior = $priorStatement->fetch();
 
-            $statement = $pdo->prepare(
-                'INSERT INTO production_records
-                    (flock_id, record_date, eggs_produced, good_eggs, damaged_eggs, sample_size, average_weight, mortality_count, remarks)
-                 VALUES
-                    (:flock_id, :record_date, :eggs_produced, :good_eggs, :damaged_eggs, :sample_size, :average_weight, :mortality_count, :remarks)'
-            );
-            $statement->execute($values);
-            audit_pms_action($pdo, 'CREATE', 'production_records', (int) $pdo->lastInsertId());
-            set_flash('success', 'Production record saved.');
-            redirect_to('index.php');
+                $pdo->beginTransaction();
+                try {
+                    $statement = $pdo->prepare(
+                        'UPDATE production_records
+                         SET flock_id = :flock_id, record_date = :record_date, eggs_produced = :eggs_produced,
+                             good_eggs = :good_eggs, damaged_eggs = :damaged_eggs, sample_size = :sample_size,
+                             average_weight = :average_weight, mortality_count = :mortality_count, remarks = :remarks
+                         WHERE production_id = :production_id AND deleted_at IS NULL'
+                    );
+                    $statement->execute($values + ['production_id' => $productionId]);
+                    if ($prior) {
+                        // Reverse the old mortality on its (possibly different) flock, then apply the new one.
+                        pms_adjust_flock_birds($pdo, (int) $prior['flock_id'], (int) $prior['mortality_count']);
+                        pms_adjust_flock_birds($pdo, $values['flock_id'], -$values['mortality_count']);
+                    }
+                    $pdo->commit();
+                    audit_pms_action($pdo, 'UPDATE', 'production_records', $productionId);
+                    set_flash('success', 'Production record updated.');
+                    redirect_to('index.php');
+                } catch (RuntimeException $exception) {
+                    $pdo->rollBack();
+                    $errors['mortality_count'] = 'This mortality count would reduce a flock\'s current birds below zero.';
+                }
+            } else {
+                $pdo->beginTransaction();
+                try {
+                    $statement = $pdo->prepare(
+                        'INSERT INTO production_records
+                            (flock_id, record_date, eggs_produced, good_eggs, damaged_eggs, sample_size, average_weight, mortality_count, remarks)
+                         VALUES
+                            (:flock_id, :record_date, :eggs_produced, :good_eggs, :damaged_eggs, :sample_size, :average_weight, :mortality_count, :remarks)'
+                    );
+                    $statement->execute($values);
+                    $newProductionId = (int) $pdo->lastInsertId();
+                    pms_adjust_flock_birds($pdo, $values['flock_id'], -$values['mortality_count']);
+                    $pdo->commit();
+                    audit_pms_action($pdo, 'CREATE', 'production_records', $newProductionId);
+                    set_flash('success', 'Production record saved.');
+                    redirect_to('index.php');
+                } catch (RuntimeException $exception) {
+                    $pdo->rollBack();
+                    $errors['mortality_count'] = 'This mortality count would reduce the flock\'s current birds below zero.';
+                }
+            }
         }
 
         $action = $isEditing ? 'edit' : 'add';

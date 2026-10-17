@@ -117,6 +117,7 @@ $isEditing = false;
 $flocks = [];
 $medicineItems = [];
 $records = [];
+$healthAlerts = ['disease_clusters' => [], 'high_mortality' => [], 'stale_cases' => []];
 $stats = ['total_records' => 0, 'disease_count' => 0, 'vaccination_count' => 0, 'treatment_count' => 0, 'health_check_count' => 0, 'under_treatment_count' => 0, 'birds_under_treatment' => 0];
 $filters = [
     'record_type' => trim((string) ($_GET['record_type'] ?? '')),
@@ -203,16 +204,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                 redirect_to('index.php');
             }
 
-            $statement = $pdo->prepare(
-                'INSERT INTO health_records
-                    (flock_id, record_date, record_type, description, affected_birds, medicine_or_vaccine, quantity_used, unit, action_taken, status, remarks)
-                 VALUES
-                    (:flock_id, :record_date, :record_type, :description, :affected_birds, :medicine_or_vaccine, :quantity_used, :unit, :action_taken, :status, :remarks)'
-            );
-            $statement->execute($values);
-            audit_pms_action($pdo, 'CREATE', 'health_records', (int) $pdo->lastInsertId());
-            set_flash('success', 'Health record saved.');
-            redirect_to('index.php');
+            $deductFromInventory = isset($_POST['deduct_from_inventory']);
+            $matchedItem = $deductFromInventory && $values['medicine_or_vaccine'] !== null && (float) $values['quantity_used'] > 0
+                ? pms_find_inventory_item_by_name($pdo, $values['medicine_or_vaccine'])
+                : null;
+            if ($deductFromInventory && $values['medicine_or_vaccine'] !== null && (float) $values['quantity_used'] > 0 && $matchedItem === null) {
+                $errors['medicine_or_vaccine'] = 'No active inventory item named "' . $values['medicine_or_vaccine'] . '" was found to deduct from.';
+            }
+
+            if ($errors === []) {
+                $pdo->beginTransaction();
+                try {
+                    $statement = $pdo->prepare(
+                        'INSERT INTO health_records
+                            (flock_id, record_date, record_type, description, affected_birds, medicine_or_vaccine, quantity_used, unit, action_taken, status, remarks)
+                         VALUES
+                            (:flock_id, :record_date, :record_type, :description, :affected_birds, :medicine_or_vaccine, :quantity_used, :unit, :action_taken, :status, :remarks)'
+                    );
+                    $statement->execute($values);
+                    $newHealthId = (int) $pdo->lastInsertId();
+                    if ($matchedItem !== null) {
+                        $adjustmentId = pms_apply_inventory_adjustment(
+                            $pdo, (int) $matchedItem['item_id'], 'Reduce', number_format((float) $values['quantity_used'], 2, '.', ''),
+                            'Used for health record #' . $newHealthId, 'Health Record', $newHealthId
+                        );
+                    }
+                    $pdo->commit();
+                    audit_pms_action($pdo, 'CREATE', 'health_records', $newHealthId);
+                    if ($matchedItem !== null) {
+                        audit_pms_action($pdo, 'UPDATE', 'poultry_inventory', (int) $matchedItem['item_id']);
+                        audit_pms_action($pdo, 'CREATE', 'inventory_adjustments', $adjustmentId);
+                    }
+                    set_flash('success', 'Health record saved.' . ($matchedItem !== null ? ' Inventory deducted.' : ''));
+                    redirect_to('index.php');
+                } catch (RuntimeException $exception) {
+                    $pdo->rollBack();
+                    $errors['medicine_or_vaccine'] = 'Not enough "' . $values['medicine_or_vaccine'] . '" in stock to deduct this quantity.';
+                }
+            }
         }
 
         $action = $isEditing ? 'edit' : 'add';
@@ -259,6 +288,7 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
             }
         } else {
             $action = 'list';
+            $healthAlerts = pms_health_alerts($pdo);
             $conditions = ['h.deleted_at IS NULL', 'f.deleted_at IS NULL'];
             $parameters = [];
             if (in_array($filters['record_type'], HEALTH_RECORD_TYPES, true)) {
@@ -389,7 +419,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <input class="form-control<?= isset($errors['medicine_or_vaccine']) ? ' is-invalid' : '' ?>" id="medicine_or_vaccine" name="medicine_or_vaccine" maxlength="150" list="medicine-options" value="<?= h($formData['medicine_or_vaccine']) ?>">
                         <datalist id="medicine-options"><?php foreach ($medicineItems as $medicineItem): ?><option value="<?= h($medicineItem['item_name']) ?>"><?php endforeach; ?></datalist>
                         <?php if (isset($errors['medicine_or_vaccine'])): ?><div class="invalid-feedback"><?= h($errors['medicine_or_vaccine']) ?></div><?php endif; ?>
-                        <div class="form-text">Suggestions use current medicine/vaccine inventory names; selecting one does not deduct stock.</div>
+                        <div class="form-text">Suggestions use current medicine/vaccine inventory names.</div>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label" for="quantity_used">Quantity used</label>
@@ -401,6 +431,14 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <input class="form-control<?= isset($errors['unit']) ? ' is-invalid' : '' ?>" id="unit" name="unit" maxlength="30" value="<?= h($formData['unit']) ?>">
                         <?php if (isset($errors['unit'])): ?><div class="invalid-feedback"><?= h($errors['unit']) ?></div><?php endif; ?>
                     </div>
+                    <?php if (!$isEditing): ?>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="deduct_from_inventory" name="deduct_from_inventory" value="1">
+                                <label class="form-check-label" for="deduct_from_inventory">Deduct this quantity from inventory (requires an active inventory item with this exact name)</label>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                     <div class="col-12">
                         <label class="form-label" for="action_taken">Action taken</label>
                         <textarea class="form-control" id="action_taken" name="action_taken" rows="3"><?= h($formData['action_taken']) ?></textarea>
@@ -433,6 +471,39 @@ require __DIR__ . '/../../shared/includes/header.php';
         ?>
         <?php foreach ($summaryCards as [$label, $value]): ?><div class="col-6 col-lg-4 col-xl-2"><div class="stat-card"><div class="stat-label"><?= h($label) ?></div><div class="stat-value"><?= number_format((int) $value) ?></div></div></div><?php endforeach; ?>
     </div>
+
+    <?php $hasAlerts = $healthAlerts['disease_clusters'] !== [] || $healthAlerts['high_mortality'] !== [] || $healthAlerts['stale_cases'] !== []; ?>
+    <?php if ($hasAlerts): ?>
+        <section class="content-panel mb-4">
+            <div class="panel-heading"><h2 class="h5 mb-0">Disease early-warning alerts</h2></div>
+            <div class="panel-body">
+                <?php if ($healthAlerts['disease_clusters'] !== []): ?>
+                    <div class="alert alert-danger mb-3">
+                        <strong>Disease cluster:</strong>
+                        <?php foreach ($healthAlerts['disease_clusters'] as $cluster): ?>
+                            <div>Flock <?= h($cluster['batch_code']) ?> has had <?= (int) $cluster['disease_count'] ?> Disease records in the last <?= PMS_DISEASE_CLUSTER_WINDOW_DAYS ?> days.</div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+                <?php if ($healthAlerts['high_mortality'] !== []): ?>
+                    <div class="alert alert-danger mb-3">
+                        <strong>High mortality:</strong>
+                        <?php foreach ($healthAlerts['high_mortality'] as $mortalityAlert): ?>
+                            <div>Flock <?= h($mortalityAlert['batch_code']) ?> lost <?= (int) $mortalityAlert['mortality_7d'] ?> birds in the last <?= PMS_HIGH_MORTALITY_WINDOW_DAYS ?> days (<?= number_format((float) $mortalityAlert['mortality_rate'], 1) ?>% of its <?= number_format((int) $mortalityAlert['current_birds']) ?> current birds).</div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+                <?php if ($healthAlerts['stale_cases'] !== []): ?>
+                    <div class="alert alert-warning mb-0">
+                        <strong>Open longer than <?= PMS_STALE_HEALTH_CASE_DAYS ?> days:</strong>
+                        <?php foreach ($healthAlerts['stale_cases'] as $staleCase): ?>
+                            <div>Flock <?= h($staleCase['batch_code']) ?>: <?= h($staleCase['record_type']) ?> record from <?= h($staleCase['record_date']) ?> is still "<?= h($staleCase['status']) ?>" (<?= (int) $staleCase['days_open'] ?> days).</div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </section>
+    <?php endif; ?>
 
     <section class="content-panel">
         <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Health records</h2><span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span></div>

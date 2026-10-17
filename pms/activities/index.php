@@ -6,6 +6,7 @@ require_authentication();
 
 const FARM_ACTIVITY_TYPES = ['Feeding', 'Cleaning', 'Vaccination', 'Medication', 'Egg Collection', 'Weighing', 'Other'];
 const FARM_ACTIVITY_STATUSES = ['Scheduled', 'In Progress', 'Completed', 'Missed', 'Cancelled'];
+const FARM_ACTIVITY_INVENTORY_TYPES = ['Feeding', 'Vaccination', 'Medication'];
 
 function activity_form_data(array $source): array
 {
@@ -15,6 +16,8 @@ function activity_form_data(array $source): array
         'description' => trim((string) ($source['description'] ?? '')),
         'scheduled_date' => trim((string) ($source['scheduled_date'] ?? '')),
         'assigned_to' => trim((string) ($source['assigned_to'] ?? '')),
+        'inventory_item_name' => trim((string) ($source['inventory_item_name'] ?? '')),
+        'inventory_quantity_used' => trim((string) ($source['inventory_quantity_used'] ?? '')),
         'status' => trim((string) ($source['status'] ?? 'Scheduled')),
         'remarks' => trim((string) ($source['remarks'] ?? '')),
     ];
@@ -63,6 +66,19 @@ function validate_activity(array $activity, PDO $pdo): array
         }
     }
 
+    if (mb_strlen($activity['inventory_item_name']) > 150) {
+        $errors['inventory_item_name'] = 'Item name must be 150 characters or fewer.';
+    }
+    if ($activity['inventory_quantity_used'] !== '' && !preg_match('/\A\d{1,10}(?:\.\d{1,2})?\z/', $activity['inventory_quantity_used'])) {
+        $errors['inventory_quantity_used'] = 'Quantity used must be a non-negative number with up to two decimal places.';
+    }
+    if ($activity['inventory_item_name'] !== '' && $activity['inventory_quantity_used'] === '') {
+        $errors['inventory_quantity_used'] = 'Enter the quantity used with the item name.';
+    }
+    if ($activity['inventory_quantity_used'] !== '' && $activity['inventory_item_name'] === '') {
+        $errors['inventory_item_name'] = 'Enter the item name with the quantity used.';
+    }
+
     return $errors;
 }
 
@@ -105,15 +121,17 @@ $formData = activity_form_data([]);
 $activity = null;
 $isEditing = false;
 $pageTitle = 'Farm Activities';
-$stats = ['scheduled' => 0, 'in_progress' => 0, 'completed' => 0, 'missed' => 0, 'cancelled' => 0];
+$stats = ['scheduled' => 0, 'in_progress' => 0, 'completed' => 0, 'missed' => 0, 'cancelled' => 0, 'due_or_overdue' => 0];
 $records = [];
 $flocks = [];
+$inventoryItems = [];
 $filters = [
     'activity_type' => trim((string) ($_GET['activity_type'] ?? '')),
     'status' => trim((string) ($_GET['status'] ?? '')),
     'flock_id' => trim((string) ($_GET['flock_id'] ?? '')),
     'scheduled_date' => trim((string) ($_GET['scheduled_date'] ?? '')),
     'search' => trim((string) ($_GET['search'] ?? '')),
+    'overdue_only' => trim((string) ($_GET['overdue_only'] ?? '')),
 ];
 $databaseFailure = $databaseError !== null;
 
@@ -150,6 +168,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
             if ($errors === []) {
                 $values = $formData;
                 $values['flock_id'] = $formData['flock_id'] === '' ? null : (int) $formData['flock_id'];
+                $values['inventory_item_name'] = $formData['inventory_item_name'] === '' ? null : $formData['inventory_item_name'];
+                $values['inventory_quantity_used'] = $formData['inventory_quantity_used'] === '' ? null : $formData['inventory_quantity_used'];
+
                 if ($isEditing) {
                     $statement = $pdo->prepare(
                         "UPDATE farm_activities
@@ -159,8 +180,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                                  ELSE NULL
                              END,
                              flock_id = :flock_id, activity_type = :activity_type, description = :description,
-                             scheduled_date = :scheduled_date, assigned_to = :assigned_to, status = :status,
-                             remarks = :remarks
+                             scheduled_date = :scheduled_date, assigned_to = :assigned_to,
+                             inventory_item_name = :inventory_item_name, inventory_quantity_used = :inventory_quantity_used,
+                             status = :status, remarks = :remarks
                          WHERE activity_id = :activity_id AND deleted_at IS NULL"
                     );
                     $statement->execute($values + [
@@ -172,17 +194,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                     redirect_to('index.php?action=edit&id=' . $activityId);
                 }
 
-                $completedDate = $formData['status'] === 'Completed' ? date('Y-m-d') : null;
-                $statement = $pdo->prepare(
-                    'INSERT INTO farm_activities
-                        (flock_id, activity_type, description, scheduled_date, completed_date, assigned_to, status, remarks)
-                     VALUES
-                        (:flock_id, :activity_type, :description, :scheduled_date, :completed_date, :assigned_to, :status, :remarks)'
-                );
-                $statement->execute($values + ['completed_date' => $completedDate]);
-                audit_pms_action($pdo, 'CREATE', 'farm_activities', (int) $pdo->lastInsertId());
-                set_flash('success', 'Farm activity scheduled.');
-                redirect_to('index.php');
+                $canDeductForType = in_array($formData['activity_type'], FARM_ACTIVITY_INVENTORY_TYPES, true);
+                $deductFromInventory = $canDeductForType && isset($_POST['deduct_from_inventory']);
+                $matchedItem = $deductFromInventory && $values['inventory_item_name'] !== null && (float) $values['inventory_quantity_used'] > 0
+                    ? pms_find_inventory_item_by_name($pdo, $values['inventory_item_name'])
+                    : null;
+                if ($deductFromInventory && $values['inventory_item_name'] !== null && (float) $values['inventory_quantity_used'] > 0 && $matchedItem === null) {
+                    $errors['inventory_item_name'] = 'No active inventory item named "' . $values['inventory_item_name'] . '" was found to deduct from.';
+                }
+
+                if ($errors === []) {
+                    $completedDate = $formData['status'] === 'Completed' ? date('Y-m-d') : null;
+                    $pdo->beginTransaction();
+                    try {
+                        $statement = $pdo->prepare(
+                            'INSERT INTO farm_activities
+                                (flock_id, activity_type, description, scheduled_date, completed_date, assigned_to, inventory_item_name, inventory_quantity_used, status, remarks)
+                             VALUES
+                                (:flock_id, :activity_type, :description, :scheduled_date, :completed_date, :assigned_to, :inventory_item_name, :inventory_quantity_used, :status, :remarks)'
+                        );
+                        $statement->execute($values + ['completed_date' => $completedDate]);
+                        $newActivityId = (int) $pdo->lastInsertId();
+                        if ($matchedItem !== null) {
+                            $adjustmentId = pms_apply_inventory_adjustment(
+                                $pdo, (int) $matchedItem['item_id'], 'Reduce', number_format((float) $values['inventory_quantity_used'], 2, '.', ''),
+                                'Used for farm activity #' . $newActivityId, 'Farm Activity', $newActivityId
+                            );
+                        }
+                        $pdo->commit();
+                        audit_pms_action($pdo, 'CREATE', 'farm_activities', $newActivityId);
+                        if ($matchedItem !== null) {
+                            audit_pms_action($pdo, 'UPDATE', 'poultry_inventory', (int) $matchedItem['item_id']);
+                            audit_pms_action($pdo, 'CREATE', 'inventory_adjustments', $adjustmentId);
+                        }
+                        set_flash('success', 'Farm activity scheduled.' . ($matchedItem !== null ? ' Inventory deducted.' : ''));
+                        redirect_to('index.php');
+                    } catch (RuntimeException $exception) {
+                        $pdo->rollBack();
+                        $errors['inventory_item_name'] = 'Not enough "' . $values['inventory_item_name'] . '" in stock to deduct this quantity.';
+                    }
+                }
             }
 
             $action = $isEditing ? 'edit' : 'add';
@@ -259,6 +310,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
 if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     try {
         $flocks = $pdo->query('SELECT flock_id, batch_code, status FROM flocks WHERE deleted_at IS NULL ORDER BY batch_code')->fetchAll();
+        $inventoryItems = $pdo->query("SELECT item_name FROM poultry_inventory WHERE deleted_at IS NULL AND status <> 'Out of Stock' ORDER BY item_name")->fetchAll();
 
         if (in_array($action, ['add', 'edit'], true)) {
             if (!$canManage) {
@@ -291,7 +343,8 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                     COALESCE(SUM(status = 'In Progress'), 0) AS in_progress,
                     COALESCE(SUM(status = 'Completed'), 0) AS completed,
                     COALESCE(SUM(status = 'Missed'), 0) AS missed,
-                    COALESCE(SUM(status = 'Cancelled'), 0) AS cancelled
+                    COALESCE(SUM(status = 'Cancelled'), 0) AS cancelled,
+                    COALESCE(SUM(status IN ('Scheduled', 'In Progress') AND scheduled_date <= CURDATE()), 0) AS due_or_overdue
                  FROM farm_activities WHERE deleted_at IS NULL"
             )->fetch();
             if ($summary) {
@@ -334,11 +387,15 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 $parameters['description_search'] = '%' . $filters['search'] . '%';
                 $parameters['assigned_search'] = '%' . $filters['search'] . '%';
             }
+            if ($filters['overdue_only'] === '1') {
+                $conditions[] = "a.status IN ('Scheduled', 'In Progress') AND a.scheduled_date <= CURDATE()";
+            }
 
-            $sql = 'SELECT a.activity_id, a.flock_id, f.batch_code, a.activity_type, a.description,
-                           a.scheduled_date, a.assigned_to, a.status, a.completed_date
+            $sql = "SELECT a.activity_id, a.flock_id, f.batch_code, a.activity_type, a.description,
+                           a.scheduled_date, a.assigned_to, a.status, a.completed_date,
+                           (a.status IN ('Scheduled', 'In Progress') AND a.scheduled_date < CURDATE()) AS is_overdue
                     FROM farm_activities a
-                    LEFT JOIN flocks f ON f.flock_id = a.flock_id';
+                    LEFT JOIN flocks f ON f.flock_id = a.flock_id";
             if ($conditions !== []) {
                 $sql .= ' WHERE ' . implode(' AND ', $conditions);
             }
@@ -425,6 +482,26 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <input class="form-control<?= isset($errors['description']) ? ' is-invalid' : '' ?>" id="description" name="description" maxlength="255" value="<?= h($formData['description']) ?>">
                         <?php if (isset($errors['description'])): ?><div class="invalid-feedback"><?= h($errors['description']) ?></div><?php endif; ?>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="inventory_item_name">Inventory item used</label>
+                        <input class="form-control<?= isset($errors['inventory_item_name']) ? ' is-invalid' : '' ?>" id="inventory_item_name" name="inventory_item_name" maxlength="150" list="inventory-item-options" value="<?= h($formData['inventory_item_name']) ?>">
+                        <datalist id="inventory-item-options"><?php foreach ($inventoryItems as $inventoryItem): ?><option value="<?= h($inventoryItem['item_name']) ?>"><?php endforeach; ?></datalist>
+                        <?php if (isset($errors['inventory_item_name'])): ?><div class="invalid-feedback"><?= h($errors['inventory_item_name']) ?></div><?php endif; ?>
+                        <div class="form-text">Only used for Feeding / Vaccination / Medication activities.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="inventory_quantity_used">Quantity used</label>
+                        <input type="number" class="form-control<?= isset($errors['inventory_quantity_used']) ? ' is-invalid' : '' ?>" id="inventory_quantity_used" name="inventory_quantity_used" min="0" step="0.01" value="<?= h($formData['inventory_quantity_used']) ?>">
+                        <?php if (isset($errors['inventory_quantity_used'])): ?><div class="invalid-feedback"><?= h($errors['inventory_quantity_used']) ?></div><?php endif; ?>
+                    </div>
+                    <?php if (!$isEditing): ?>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="deduct_from_inventory" name="deduct_from_inventory" value="1">
+                                <label class="form-check-label" for="deduct_from_inventory">Deduct from inventory</label>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                     <div class="col-12">
                         <label class="form-label" for="remarks">Remarks</label>
                         <textarea class="form-control" id="remarks" name="remarks" rows="3"><?= h($formData['remarks']) ?></textarea>
@@ -456,6 +533,7 @@ require __DIR__ . '/../../shared/includes/header.php';
             ['Total Completed', $stats['completed']],
             ['Total Missed', $stats['missed']],
             ['Total Cancelled', $stats['cancelled']],
+            ['Due Today / Overdue', $stats['due_or_overdue']],
         ];
         ?>
         <?php foreach ($statusCards as [$label, $value]): ?>
@@ -501,6 +579,12 @@ require __DIR__ . '/../../shared/includes/header.php';
                     <label class="form-label" for="filter_search">Description / assignee</label>
                     <input class="form-control" id="filter_search" name="search" value="<?= h($filters['search']) ?>" placeholder="Search tasks">
                 </div>
+                <div class="col-md-2">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="filter_overdue" name="overdue_only" value="1" <?= $filters['overdue_only'] === '1' ? 'checked' : '' ?> onchange="this.form.submit()">
+                        <label class="form-check-label" for="filter_overdue">Due today / overdue only</label>
+                    </div>
+                </div>
                 <div class="col-md-2 d-flex gap-2">
                     <button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button>
                     <a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a>
@@ -534,7 +618,10 @@ require __DIR__ . '/../../shared/includes/header.php';
                                 <td><?= h($record['description'] ?? '') ?></td>
                                 <td><?= h($record['scheduled_date']) ?></td>
                                 <td><?= h($record['assigned_to'] ?? '') ?></td>
-                                <td><span class="badge text-bg-<?= h(activity_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>
+                                <td>
+                                    <span class="badge text-bg-<?= h(activity_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span>
+                                    <?php if ((bool) $record['is_overdue']): ?><span class="badge text-bg-danger">Overdue</span><?php endif; ?>
+                                </td>
                                 <td><?= h($record['completed_date'] ?? '') ?></td>
                                 <td class="text-end text-nowrap">
                                     <?php if ($canManage): ?>

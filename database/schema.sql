@@ -18,7 +18,7 @@
 -- This file reflects the schema's CURRENT, fully-migrated shape. The
 -- individual numbered files under database/migrations/ are the historical/
 -- incremental record of how it got here (ALTER TABLE steps); you do not need
--- to run those after importing this file on a fresh database — they exist
+-- to run those after importing this file on a fresh database ??? they exist
 -- for reference and for upgrading an older, already-running copy of this
 -- database in place.
 -- ============================================================================
@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS flocks (
   `batch_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `breed` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `start_date` date NOT NULL,
+  `age_at_arrival_days` int NOT NULL DEFAULT '0',
   `initial_birds` int NOT NULL,
   `current_birds` int NOT NULL,
   `status` enum('Active','Completed','Sold','Terminated') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
@@ -99,7 +100,7 @@ CREATE TABLE IF NOT EXISTS flocks (
   UNIQUE KEY `batch_code` (`batch_code`),
   KEY `idx_flock_status` (`status`),
   KEY `idx_flocks_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS poultry_inventory (
   `item_id` int NOT NULL AUTO_INCREMENT,
@@ -119,7 +120,7 @@ CREATE TABLE IF NOT EXISTS poultry_inventory (
   KEY `idx_inventory_category` (`category`),
   KEY `idx_inventory_status` (`status`),
   KEY `idx_inventory_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS farm_activities (
   `activity_id` int NOT NULL AUTO_INCREMENT,
@@ -129,6 +130,8 @@ CREATE TABLE IF NOT EXISTS farm_activities (
   `scheduled_date` date NOT NULL,
   `completed_date` date DEFAULT NULL,
   `assigned_to` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `inventory_item_name` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `inventory_quantity_used` decimal(12,2) DEFAULT NULL,
   `status` enum('Scheduled','In Progress','Completed','Missed','Cancelled') COLLATE utf8mb4_unicode_ci DEFAULT 'Scheduled',
   `remarks` text COLLATE utf8mb4_unicode_ci,
   `deleted_at` datetime DEFAULT NULL,
@@ -137,7 +140,7 @@ CREATE TABLE IF NOT EXISTS farm_activities (
   KEY `fk_activity_flock` (`flock_id`),
   KEY `idx_activity_date_status` (`scheduled_date`,`status`),
   KEY `idx_activities_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS production_records (
   `production_id` int NOT NULL AUTO_INCREMENT,
@@ -155,7 +158,7 @@ CREATE TABLE IF NOT EXISTS production_records (
   PRIMARY KEY (`production_id`),
   KEY `idx_production_flock_date` (`flock_id`,`record_date`),
   KEY `idx_production_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS health_records (
   `health_id` int NOT NULL AUTO_INCREMENT,
@@ -175,7 +178,7 @@ CREATE TABLE IF NOT EXISTS health_records (
   PRIMARY KEY (`health_id`),
   KEY `idx_health_flock_date` (`flock_id`,`record_date`),
   KEY `idx_health_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS inventory_adjustments (
   `adjustment_id` int NOT NULL AUTO_INCREMENT,
@@ -218,7 +221,7 @@ CREATE TABLE IF NOT EXISTS financial_transactions (
   KEY `idx_transaction_date` (`transaction_date`),
   KEY `idx_transaction_type` (`transaction_type`),
   KEY `idx_transactions_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS transaction_documents (
   `document_id` int NOT NULL AUTO_INCREMENT,
@@ -232,7 +235,7 @@ CREATE TABLE IF NOT EXISTS transaction_documents (
   PRIMARY KEY (`document_id`),
   KEY `fk_document_transaction` (`transaction_id`),
   KEY `idx_documents_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS accounts_receivable (
   `ar_id` int NOT NULL AUTO_INCREMENT,
@@ -251,7 +254,7 @@ CREATE TABLE IF NOT EXISTS accounts_receivable (
   PRIMARY KEY (`ar_id`),
   KEY `fk_ar_transaction` (`transaction_id`),
   KEY `idx_ar_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS accounts_payable (
   `ap_id` int NOT NULL AUTO_INCREMENT,
@@ -270,7 +273,7 @@ CREATE TABLE IF NOT EXISTS accounts_payable (
   PRIMARY KEY (`ap_id`),
   KEY `fk_ap_transaction` (`transaction_id`),
   KEY `idx_ap_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS accounts (
   `account_id` int NOT NULL AUTO_INCREMENT,
@@ -281,12 +284,12 @@ CREATE TABLE IF NOT EXISTS accounts (
   `status` enum('Active','Inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
   PRIMARY KEY (`account_id`),
   UNIQUE KEY `account_code` (`account_code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 -- Integrated: Integrated Poultry Farm Operations & Accounting (integrated/)
 -- Reads PMS/AIS data (flocks, financial_transactions, etc.) but never writes
--- to any PMS or AIS table — these four tables are the only ones it owns.
+-- to any PMS or AIS table ??? these four tables are the only ones it owns.
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS batch_costs (
@@ -302,7 +305,7 @@ CREATE TABLE IF NOT EXISTS batch_costs (
   PRIMARY KEY (`cost_id`),
   KEY `idx_batch_cost_flock` (`flock_id`),
   KEY `idx_batch_costs_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS batch_profitability (
   `profitability_id` int NOT NULL AUTO_INCREMENT,
@@ -314,7 +317,7 @@ CREATE TABLE IF NOT EXISTS batch_profitability (
   `calculation_date` date NOT NULL,
   PRIMARY KEY (`profitability_id`),
   UNIQUE KEY `flock_id` (`flock_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS inventory_replenishment (
   `replenishment_id` int NOT NULL AUTO_INCREMENT,
@@ -333,7 +336,7 @@ CREATE TABLE IF NOT EXISTS inventory_replenishment (
   PRIMARY KEY (`replenishment_id`),
   KEY `fk_replenishment_item` (`item_id`),
   KEY `idx_replenishment_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS scenarios (
   `scenario_id` int NOT NULL AUTO_INCREMENT,
@@ -350,6 +353,6 @@ CREATE TABLE IF NOT EXISTS scenarios (
   `deleted_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`scenario_id`),
   KEY `idx_scenarios_deleted_at` (`deleted_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
