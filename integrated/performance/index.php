@@ -143,9 +143,11 @@ $correlations = [
     'Cost vs Profit' => pearson_correlation($costSeries, $profitSeries),
 ];
 
+$pageBodyClass = 'page-performance';
+$printReportTitle = 'YIELD — Production & Financial Performance Report';
 require __DIR__ . '/../../shared/includes/header.php';
 ?>
-<div class="page-heading">
+<div class="page-heading d-print-none">
     <div class="eyebrow">PRODUCTION AND FINANCIAL PERFORMANCE CORRELATION DASHBOARD</div>
     <h1>Production &amp; Financial Performance</h1>
     <p>Operational and financial indicators side by side, drawn live from PMS and AIS records.</p>
@@ -213,7 +215,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                     <div class="col-6"><div class="detail-label">Total items</div><div class="detail-value"><?= $inventoryExposure['items'] ?></div></div>
                     <div class="col-6"><div class="detail-label">Items needing attention</div><div class="detail-value"><?= $inventoryExposure['at_risk_items'] ?></div></div>
                 </div>
-                <p class="small text-secondary mt-2 mb-0">"Total inventory value" = quantity &times; unit cost, summed across all active inventory items — the capital currently tied up in stock.</p>
+                <p class="small text-secondary mt-2 mb-0 d-print-none">"Total inventory value" = quantity &times; unit cost, summed across all active inventory items — the capital currently tied up in stock.</p>
             </div>
         </section>
     </div>
@@ -232,7 +234,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">7. Batch Profitability</h2></div>
-    <div class="table-responsive">
+    <div>
         <table class="table table-sm mb-0">
             <thead><tr><th>Batch</th><th class="text-end">Birds</th><th class="text-end">Eggs</th><th class="text-end">Mortality</th><th class="text-end">Revenue</th><th class="text-end">Cost</th><th class="text-end">Gross Profit</th></tr></thead>
             <tbody>
@@ -259,7 +261,7 @@ require __DIR__ . '/../../shared/includes/header.php';
             <div class="alert alert-info" role="status">
                 Statistical correlation is not shown because only <?= $comparisonSampleSize ?> batch(es) currently have data — a reliable correlation coefficient needs at least <?= MIN_CORRELATION_SAMPLE ?> data points. The table below shows the raw operational-vs-financial comparison per batch instead, without claiming a statistical relationship.
             </div>
-            <div class="table-responsive">
+            <div>
                 <table class="table table-sm mb-0">
                     <thead><tr><th>Batch</th><th class="text-end">Birds</th><th class="text-end">Eggs</th><th class="text-end">Mortality</th><th class="text-end">Revenue</th><th class="text-end">Cost</th><th class="text-end">Profit</th></tr></thead>
                     <tbody>
@@ -278,7 +280,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </table>
             </div>
         <?php else: ?>
-            <p class="small text-secondary">Calculated Pearson correlation coefficient (r), based on <?= $comparisonSampleSize ?> batches:</p>
+            <p class="small text-secondary d-print-none">Calculated Pearson correlation coefficient (r), based on <?= $comparisonSampleSize ?> batches:</p>
             <table class="table table-sm mb-0">
                 <thead><tr><th>Relationship</th><th class="text-end">Correlation (r)</th></tr></thead>
                 <tbody>

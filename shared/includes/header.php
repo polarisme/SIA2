@@ -13,7 +13,7 @@ $flash = take_flash();
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="<?= h(versioned_asset_url('/shared/assets/css/app.css')) ?>" rel="stylesheet">
 </head>
-<body class="theme-<?= h(str_replace('_', '-', $activeSystem)) ?>">
+<body class="theme-<?= h(str_replace('_', '-', $activeSystem)) ?><?= isset($pageBodyClass) ? ' ' . h($pageBodyClass) : '' ?>">
 <?php require __DIR__ . '/sidebar.php'; ?>
 <div class="app-shell">
 <header class="topbar">
@@ -38,6 +38,12 @@ $flash = take_flash();
     </div>
 </header>
 <main class="container-fluid app-width py-4 py-lg-5">
+    <?php if (isset($printReportTitle)): ?>
+        <div class="print-report-header">
+            <h1><?= h($printReportTitle) ?></h1>
+            <p>Printed: <?= h(date('Y-m-d H:i:s')) ?> by <?= h(current_display_name()) ?></p>
+        </div>
+    <?php endif; ?>
     <?php if ($flash !== null): ?>
         <?php $alertType = in_array($flash['type'], ['success', 'danger', 'warning', 'info'], true) ? $flash['type'] : 'info'; ?>
         <div class="alert alert-<?= h($alertType) ?> alert-dismissible fade show" role="alert">

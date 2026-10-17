@@ -348,6 +348,7 @@ CREATE TABLE IF NOT EXISTS inventory_replenishment (
   `estimated_cost` decimal(14,2) GENERATED ALWAYS AS ((`recommended_quantity` * `unit_price`)) STORED,
   `available_budget` decimal(14,2) DEFAULT '0.00',
   `recommendation` text COLLATE utf8mb4_unicode_ci,
+  `recommendation_status` enum('Sufficient Stock','Replenishment Recommended','Insufficient Budget','High Priority Replenishment') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('Pending','Approved','Rejected','Completed') COLLATE utf8mb4_unicode_ci DEFAULT 'Pending',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` datetime DEFAULT NULL,

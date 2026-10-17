@@ -74,9 +74,11 @@ if ($pdo instanceof PDO) {
     }
 }
 
+$pageBodyClass = 'page-cost-efficiency';
+$printReportTitle = 'YIELD — Cost Efficiency Analytics Report';
 require __DIR__ . '/../../shared/includes/header.php';
 ?>
-<div class="page-heading">
+<div class="page-heading d-print-none">
     <div class="eyebrow">OPERATIONAL COST EFFICIENCY ANALYTICS</div>
     <h1>Cost Efficiency Analytics</h1>
     <p>Compares actual financial cost against operational scale, so differently-sized batches can be compared fairly.</p>
@@ -86,7 +88,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">Cost per Batch</h2></div>
-    <div class="table-responsive">
+    <div>
         <table class="table table-hover mb-0">
             <thead><tr><th>Batch</th><th class="text-end">Current Birds</th><th class="text-end">Total Cost</th><th class="text-end">Cost per Bird</th><th class="text-end">Eggs Produced</th><th class="text-end">Cost per 100 Eggs</th><th class="text-end">Activities Completed</th><th class="text-end">Health Incidents</th></tr></thead>
             <tbody>
@@ -109,14 +111,14 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
-    <div class="panel-body">
+    <div class="panel-body d-print-none">
         <p class="small text-secondary mb-0">"Cost per bird" divides total recorded cost by the batch's current bird count — a batch with 0 current birds cannot show this metric (division by zero), which is why it's shown as "—" rather than an invented number. "Cost per 100 eggs" is total cost divided by total eggs produced, scaled to a comparable unit.</p>
     </div>
 </section>
 
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">Cost Distribution by Category (per batch, cost per bird)</h2></div>
-    <div class="table-responsive">
+    <div>
         <table class="table table-sm mb-0">
             <thead><tr><th>Batch</th><?php foreach (INTEGRATED_COST_CATEGORIES as $category): ?><th class="text-end"><?= h($category) ?></th><?php endforeach; ?></tr></thead>
             <tbody>
@@ -153,7 +155,7 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
-    <div class="panel-body">
+    <div class="panel-body d-print-none">
         <p class="small text-secondary mb-0">
             "Above average" is flagged only when a batch's cost-per-bird for a category is more than 1.5&times; the average of at least 2 other comparable batches with recorded cost in that category — this is a transparent, fixed rule, not a claim of inefficiency. A high absolute cost alone does not trigger this flag; only a high cost relative to batch size does.
         </p>

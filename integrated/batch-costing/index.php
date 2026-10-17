@@ -123,9 +123,11 @@ if ($action === 'view' && $pdo instanceof PDO) {
     $allocatedCosts = $allocatedCostsStatement->fetchAll();
 
     $pageTitle = 'Batch Costing: ' . $flock['batch_code'];
+    $pageBodyClass = 'page-batch-costing';
+    $printReportTitle = 'YIELD — Batch Costing & Profitability Report: ' . $flock['batch_code'];
     require __DIR__ . '/../../shared/includes/header.php';
     ?>
-    <div class="page-heading">
+    <div class="page-heading d-print-none">
         <div class="eyebrow">BATCH COSTING &amp; PROFITABILITY</div>
         <h1><?= h($flock['batch_code']) ?></h1>
         <div class="d-flex gap-2 mt-2">
@@ -246,7 +248,7 @@ if ($action === 'view' && $pdo instanceof PDO) {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-                <p class="small text-secondary mt-2 mb-0">Cancelled transactions (if any) are shown here but excluded from the revenue total above.</p>
+                <p class="small text-secondary mt-2 mb-0 d-print-none">Cancelled transactions (if any) are shown here but excluded from the revenue total above.</p>
             <?php endif; ?>
         </div>
     </section>
@@ -254,7 +256,7 @@ if ($action === 'view' && $pdo instanceof PDO) {
     <section class="content-panel">
         <div class="panel-heading"><h2 class="h5 mb-0">Additional Allocated Costs</h2></div>
         <div class="panel-body">
-            <p class="small text-secondary">Use this only for costs not already recorded as an AIS transaction — for example, a share of farm-wide labor or utilities allocated to this batch.</p>
+            <p class="small text-secondary d-print-none">Use this only for costs not already recorded as an AIS transaction — for example, a share of farm-wide labor or utilities allocated to this batch.</p>
             <?php if ($allocatedCosts === []): ?>
                 <p class="text-secondary">No allocated costs recorded for this batch.</p>
             <?php else: ?>
@@ -328,9 +330,11 @@ if ($pdo instanceof PDO && $databaseError === null) {
 }
 
 $pageTitle = 'Batch Costing & Profitability';
+$pageBodyClass = 'page-batch-costing';
+$printReportTitle = 'YIELD — Batch Costing & Profitability Report';
 require __DIR__ . '/../../shared/includes/header.php';
 ?>
-<div class="page-heading">
+<div class="page-heading d-print-none">
     <div class="eyebrow">BATCH COSTING &amp; PROFITABILITY</div>
     <h1>Batch Costing &amp; Profitability</h1>
     <p>Select a batch to see its cost, revenue, and profit — calculated from live AIS and PMS records.</p>
@@ -338,7 +342,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 <?php if ($databaseError !== null): ?><div class="alert alert-danger" role="alert"><?= h($databaseError) ?></div><?php endif; ?>
 
 <section class="content-panel">
-    <div class="table-responsive">
+    <div>
         <table class="table table-hover mb-0">
             <thead><tr><th>Batch</th><th>Breed</th><th>Status</th><th class="text-end">Current Birds</th><th class="text-end">Revenue</th><th class="text-end">Total Cost</th><th class="text-end">Gross Profit</th><th class="text-end">Margin</th><th class="text-end">Actions</th></tr></thead>
             <tbody>

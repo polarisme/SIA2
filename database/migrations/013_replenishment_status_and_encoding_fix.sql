@@ -20,6 +20,8 @@
 --     directly on every new row going forward — see
 --     integrated/inventory-replenishment/index.php's action=create handler.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 UPDATE inventory_replenishment

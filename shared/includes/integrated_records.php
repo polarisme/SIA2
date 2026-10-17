@@ -262,18 +262,44 @@ function pearson_correlation(array $x, array $y): ?float
 /** Below this many data points, a correlation coefficient is not shown as a statistical claim. */
 const MIN_CORRELATION_SAMPLE = 5;
 
-function replenishment_status_badge(string $status): string
+/**
+ * Urgency (what to DO about an item) and workflow (where the analysis is in
+ * the approval process) are deliberately two separate scales, styled so
+ * they never compete for attention — urgency uses solid colour + icon,
+ * workflow uses neutral/outline styling (see replenishment_workflow_badge()).
+ */
+function replenishment_urgency_badge(string $status): array
 {
     return match ($status) {
-        'Sufficient Stock' => 'success',
-        'Replenishment Recommended' => 'primary',
-        'Insufficient Budget' => 'warning',
-        'High Priority Replenishment' => 'danger',
-        'Approved' => 'success',
-        'Rejected' => 'secondary',
-        'Completed' => 'success',
-        'Pending' => 'warning',
-        default => 'secondary',
+        'Sufficient Stock' => ['class' => 'success', 'icon' => 'bi-check-circle-fill'],
+        'Replenishment Recommended' => ['class' => 'primary', 'icon' => 'bi-cart-plus'],
+        'Insufficient Budget' => ['class' => 'warning text-dark', 'icon' => 'bi-cash-coin'],
+        'High Priority Replenishment' => ['class' => 'danger', 'icon' => 'bi-exclamation-octagon-fill'],
+        default => ['class' => 'secondary', 'icon' => 'bi-question-circle'],
+    };
+}
+
+/** A fixed, deterministic sort order for urgency — most urgent first. */
+function replenishment_urgency_rank(string $status): int
+{
+    return match ($status) {
+        'High Priority Replenishment' => 0,
+        'Insufficient Budget' => 1,
+        'Replenishment Recommended' => 2,
+        'Sufficient Stock' => 3,
+        default => 4,
+    };
+}
+
+/** Neutral/outline styling for the workflow status, so it never reads as an urgency colour. */
+function replenishment_workflow_badge(string $status): string
+{
+    return match ($status) {
+        'Pending' => 'border border-secondary text-secondary bg-white',
+        'Approved' => 'border border-primary text-primary bg-white',
+        'Completed' => 'border border-success text-success bg-white',
+        'Rejected' => 'border border-dark text-dark bg-white text-decoration-line-through',
+        default => 'border border-secondary text-secondary bg-white',
     };
 }
 

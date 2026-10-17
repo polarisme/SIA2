@@ -1,6 +1,10 @@
 /* Print-friendly output: hide chrome and interactive controls, show only the
    analysis content itself. Applies platform-wide (PMS/AIS/Integrated alike);
    has no effect on screen rendering. */
+.print-report-header {
+    display: none;
+}
+
 @media print {
     .app-sidebar, .topbar, .app-footer, .sidebar-backdrop,
     form, .btn, .no-print {
@@ -14,6 +18,73 @@
     .table {
         font-size: .82rem;
     }
+
+    .print-report-header {
+        display: block !important;
+    }
+
+    .print-report-header h1 {
+        font-size: 1.3rem;
+        margin-bottom: .2rem;
+    }
+
+    .print-report-header p {
+        font-size: .8rem;
+        color: #333;
+        margin: 0 0 .75rem;
+    }
+
+    /* Colours/background-colours (urgency badges, left borders) print as seen
+       on screen rather than being flattened to black-and-white by default. */
+    * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* =========================================================================
+   Print layout for the "Print / Export" report pages (Integrated System):
+   Inventory Replenishment, Batch Costing, Cost Efficiency, Performance.
+   Scoped to each page's body class so no other page is affected. A4
+   landscape applies to the print job as a whole — CSS has no way to scope
+   @page to a class selector, so this is the one page-level exception; it's
+   a safe default since no page previously declared any @page size at all.
+   ========================================================================= */
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 12mm;
+    }
+
+    .page-replenishment table, .page-batch-costing table,
+    .page-cost-efficiency table, .page-performance table {
+        width: 100% !important;
+        table-layout: fixed;
+    }
+
+    .page-replenishment thead, .page-batch-costing thead,
+    .page-cost-efficiency thead, .page-performance thead {
+        display: table-header-group;
+    }
+
+    .page-replenishment tr, .page-replenishment .replenishment-card,
+    .page-batch-costing tr, .page-cost-efficiency tr, .page-performance tr {
+        page-break-inside: avoid;
+    }
+}
+
+.page-replenishment .replenishment-table {
+    table-layout: fixed;
+}
+
+.page-replenishment .replenishment-reason {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: .875rem;
+}
+
+.page-replenishment .replenishment-card .replenishment-reason {
+    font-size: .875rem;
 }
 
 /* =========================================================================
