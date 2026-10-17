@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-// One-time CLI setup script: creates the AIS, Integrated, and IT Administrator
-// accounts with freshly generated random passwords. Run manually from the CLI
+// One-time CLI setup script: creates the PMS, AIS, Integrated, and IT
+// Administrator accounts with freshly generated random passwords. Run manually from the CLI
 // (`php database/setup/provision_accounts.php`) whenever those accounts do not
 // yet exist; it is idempotent and skips any username that is already present.
 // Generated passwords are printed to the console ONCE and are never written to
@@ -30,6 +30,7 @@ function random_password(int $length = 12): string
 $pdo = database_connection();
 
 $accounts = [
+    ['username' => 'pms_admin', 'display_name' => 'PMS Administrator', 'system_access' => 'pms', 'role' => 'PMS User'],
     ['username' => 'ais_admin', 'display_name' => 'AIS Administrator', 'system_access' => 'ais', 'role' => 'AIS User'],
     ['username' => 'integrated_admin', 'display_name' => 'Integrated Administrator', 'system_access' => 'integrated', 'role' => 'Integrated User'],
     ['username' => 'it_admin', 'display_name' => 'IT Administrator', 'system_access' => 'user_management', 'role' => 'IT Administrator'],

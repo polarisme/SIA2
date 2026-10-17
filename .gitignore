@@ -5,8 +5,11 @@
 !.env.example
 config.local.php
 
-# Dependencies
-vendor/
+# Dependencies — root-level vendor/ only; the vendored FPDF library under
+# shared/vendor/ is committed on purpose (see shared/vendor/fpdf/), since the
+# app requires it and there is no composer step to fetch it on a fresh clone.
+/vendor/
+!shared/vendor/
 node_modules/
 
 # Logs and temporary files
@@ -15,11 +18,21 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Database exports and backups
+# Database exports and backups — but NOT the schema/seed/migration files
+# that make this repo installable. Random one-off dumps, demo-data exports
+# taken from someone's own local database, and *.bak backups are still
+# ignored; only the specific tracked files below are exceptions.
 *.sql
 *.sql.gz
 *.bak
+!database/*.sql
+!database/migrations/*.sql
+!database/seed/*.sql
 
-# Local uploaded files (review if your app uses this folder)
+# Local uploaded files (review if your app uses this folder). The .htaccess
+# that blocks direct web access to AIS's uploaded receipts/invoices is
+# committed; the uploaded files themselves are not.
 uploads/
-
+!ais/transactions/uploads/
+ais/transactions/uploads/*
+!ais/transactions/uploads/.htaccess

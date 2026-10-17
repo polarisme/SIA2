@@ -156,6 +156,22 @@ function ais_store_uploaded_document(array $file): array
         return ['ok' => false, 'error' => 'The upload folder could not be created.', 'file_name' => null, 'file_path' => null];
     }
 
+    // Uploaded receipts/invoices must never be directly web-reachable — only
+    // through the authenticated download.php. Apache applies a .htaccess to
+    // every subdirectory beneath it, so one at the uploads root protects the
+    // dated subfolders too; this just re-creates it if it's ever missing
+    // (e.g. a fresh clone, or it was deleted by accident).
+    $uploadsRoot = ais_absolute_path('ais/transactions/uploads');
+    $htaccessPath = $uploadsRoot . '/.htaccess';
+    if (!is_file($htaccessPath)) {
+        file_put_contents(
+            $htaccessPath,
+            "# Uploaded financial supporting documents are served only through the authenticated\n"
+            . "# download.php script, never directly by URL. Block all direct HTTP access here.\n"
+            . "Require all denied\n"
+        );
+    }
+
     $storedName = bin2hex(random_bytes(16)) . '.' . $extension;
     $relativePath = $relativeDirectory . '/' . $storedName;
     if (!move_uploaded_file($file['tmp_name'], $absoluteDirectory . '/' . $storedName)) {

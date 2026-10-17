@@ -1,0 +1,3 @@
+# Uploaded financial supporting documents are served only through the authenticated
+# download.php script, never directly by URL. Block all direct HTTP access here.
+Require all denied
