@@ -212,10 +212,10 @@ require __DIR__ . '/../../shared/includes/header.php';
     <div class="panel-heading"><h2 class="h5 mb-0">New Replenishment Analysis</h2></div>
     <div class="panel-body">
         <p class="small text-secondary">Current stock and reorder level come live from Inventory Management. Expected demand and available budget are pre-filled as suggestions — from the item's recent usage and the current AIS cash position — but remain fully editable; they are not forced system values.</p>
-        <form method="post" action="index.php?action=create" class="row g-2 align-items-end" id="replenishment-form">
+        <form method="post" action="index.php?action=create" class="row g-2 align-items-start" id="replenishment-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-            <div class="col-md-3">
-                <label class="form-label" for="item_id">Inventory item</label>
+            <div class="col-6 col-lg-3">
+                <label class="form-label text-nowrap" for="item_id">Inventory item</label>
                 <select class="form-select" id="item_id" name="item_id" required onchange="updateReplenishmentSuggestions();">
                     <option value="">Select item</option>
                     <?php foreach ($items as $item): ?>
@@ -224,26 +224,33 @@ require __DIR__ . '/../../shared/includes/header.php';
                         </option>
                     <?php endforeach; ?>
                 </select>
+                <div class="form-text">&nbsp;</div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label" for="days_to_cover">Days to cover</label>
+            <div class="col-6 col-lg-2">
+                <label class="form-label text-nowrap" for="days_to_cover">Days to cover</label>
                 <input class="form-control" type="number" id="days_to_cover" name="days_to_cover" min="1" step="1" value="30" onchange="updateReplenishmentSuggestions();">
+                <div class="form-text">How many days of stock to buy for.</div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label" for="expected_demand">Expected demand <span class="text-danger">*</span></label>
+            <div class="col-6 col-lg-2">
+                <label class="form-label text-nowrap" for="expected_demand">Expected demand <span class="text-danger">*</span></label>
                 <input class="form-control" type="number" id="expected_demand" name="expected_demand" min="0" step="0.01" required>
                 <div class="form-text">Suggested: avg. daily usage (30 days) &times; days to cover.</div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label" for="unit_price">Supplier unit price (₱)</label>
+            <div class="col-6 col-lg-2">
+                <label class="form-label text-nowrap" for="unit_price">Unit price (₱)</label>
                 <input class="form-control" type="number" id="unit_price" name="unit_price" min="0" step="0.01" required>
+                <div class="form-text">Pre-filled from inventory unit cost.</div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label" for="available_budget">Available budget (₱) <span class="text-danger">*</span></label>
+            <div class="col-6 col-lg-2">
+                <label class="form-label text-nowrap" for="available_budget">Available budget (₱) <span class="text-danger">*</span></label>
                 <input class="form-control" type="number" id="available_budget" name="available_budget" min="0" step="0.01" required value="<?= h(number_format(max(0.0, $cashPosition), 2, '.', '')) ?>">
                 <div class="form-text">Suggested: current AIS cash position.</div>
             </div>
-            <div class="col-md-1"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+            <div class="col-6 col-lg-1">
+                <label class="form-label text-nowrap">&nbsp;</label>
+                <button class="btn btn-primary w-100" type="submit">Save</button>
+                <div class="form-text">&nbsp;</div>
+            </div>
         </form>
         <button class="btn btn-link btn-sm px-0 mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#replenishment-howto" aria-expanded="false" aria-controls="replenishment-howto">
             How is this calculated?
