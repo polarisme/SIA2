@@ -55,18 +55,21 @@ $pageTitle = 'YIELD';
             <article class="system-card system-card--pms">
                 <span class="system-card-icon" aria-hidden="true"><img class="yield-brand-logo system-card-logo" src="<?= h(logo_url('pms')) ?>" alt=""></span>
                 <h2>Poultry Management System</h2>
+                <p class="section-label mb-2">For: <?= h(SYSTEM_ROLE_MAP['pms']) ?></p>
                 <p>Manage poultry flocks, inventory, farm activities, production, and poultry health.</p>
                 <a class="btn btn-primary system-card-btn" href="<?= h(app_url('/pms/index.php')) ?>">Access System</a>
             </article>
             <article class="system-card system-card--ais">
                 <span class="system-card-icon" aria-hidden="true"><img class="yield-brand-logo system-card-logo" src="<?= h(logo_url('ais')) ?>" alt=""></span>
                 <h2>Accounting Information System</h2>
+                <p class="section-label mb-2">For: <?= h(SYSTEM_ROLE_MAP['ais']) ?></p>
                 <p>Manage financial transactions, accounts receivable, accounts payable, and financial reports.</p>
                 <a class="btn btn-primary system-card-btn" href="<?= h(app_url('/ais/index.php')) ?>">Access System</a>
             </article>
             <article class="system-card system-card--integrated">
                 <span class="system-card-icon" aria-hidden="true"><img class="yield-brand-logo system-card-logo" src="<?= h(logo_url('integrated')) ?>" alt=""></span>
                 <h2>Integrated Poultry Farm Operations &amp; Accounting Management System</h2>
+                <p class="section-label mb-2">For: <?= h(SYSTEM_ROLE_MAP['integrated']) ?></p>
                 <p>Connect operational and financial information to support farm analysis and decision-making.</p>
                 <a class="btn btn-primary system-card-btn" href="<?= h(app_url('/integrated/index.php')) ?>">Access System</a>
             </article>

@@ -31,7 +31,7 @@ $activeNavigation = $activeNavigation ?? '';
                 </a>
             <?php endforeach; ?>
         </nav>
-        <div class="sidebar-footer">USER MANAGEMENT</div>
+        <div class="sidebar-footer">USER MANAGEMENT · <?= h(SYSTEM_ROLE_MAP['user_management']) ?></div>
     </aside>
 <?php elseif ($activeSystem === 'integrated'): ?>
     <?php
@@ -69,7 +69,7 @@ $activeNavigation = $activeNavigation ?? '';
                 </a>
             <?php endforeach; ?>
         </nav>
-        <div class="sidebar-footer">INTEGRATED SYSTEM</div>
+        <div class="sidebar-footer">INTEGRATED SYSTEM · <?= h(SYSTEM_ROLE_MAP['integrated']) ?></div>
     </aside>
 <?php elseif ($activeSystem === 'ais'): ?>
     <?php
@@ -109,7 +109,7 @@ $activeNavigation = $activeNavigation ?? '';
                 </a>
             <?php endforeach; ?>
         </nav>
-        <div class="sidebar-footer">ACCOUNTING SYSTEM</div>
+        <div class="sidebar-footer">ACCOUNTING SYSTEM · <?= h(SYSTEM_ROLE_MAP['ais']) ?></div>
     </aside>
 <?php else: ?>
     <?php
@@ -155,6 +155,6 @@ $activeNavigation = $activeNavigation ?? '';
                 <?php endif; ?>
             <?php endforeach; ?>
         </nav>
-        <div class="sidebar-footer">POULTRY MANAGEMENT</div>
+        <div class="sidebar-footer">POULTRY MANAGEMENT · <?= h(SYSTEM_ROLE_MAP['pms']) ?></div>
     </aside>
 <?php endif; ?>

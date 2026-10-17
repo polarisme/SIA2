@@ -177,6 +177,24 @@ CREATE TABLE IF NOT EXISTS health_records (
   KEY `idx_health_deleted_at` (`deleted_at`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS inventory_adjustments (
+  `adjustment_id` int NOT NULL AUTO_INCREMENT,
+  `item_id` int NOT NULL,
+  `direction` enum('Add','Reduce') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `quantity` decimal(12,2) NOT NULL,
+  `quantity_before` decimal(12,2) NOT NULL,
+  `quantity_after` decimal(12,2) NOT NULL,
+  `reason` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `source` enum('Manual','Health Record','Farm Activity') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Manual',
+  `source_id` int DEFAULT NULL,
+  `adjusted_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `adjusted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`adjustment_id`),
+  KEY `idx_inventory_adjustments_item` (`item_id`),
+  KEY `idx_inventory_adjustments_adjusted_at` (`adjusted_at`),
+  KEY `idx_inventory_adjustments_source` (`source`,`source_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ----------------------------------------------------------------------------
 -- AIS: Accounting Information System (ais/)
 -- ----------------------------------------------------------------------------

@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                  VALUES (?, ?, ?, ?, ?, ?)'
             );
             $statement->execute([$flockId, $costDate, $costCategory, $description !== '' ? $description : null, $amount, $sourceReference !== '' ? $sourceReference : null]);
+            audit_pms_action($pdo, 'CREATE', 'batch_costs', (int) $pdo->lastInsertId());
             integrated_recalculate_batch_profitability($pdo, $flockId);
             set_flash('success', 'Additional cost recorded for this batch.');
         } else {

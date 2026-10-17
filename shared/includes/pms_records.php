@@ -82,17 +82,6 @@ function pms_restore_record(PDO $pdo, string $type, int $recordId): bool
                 throw new RuntimeException('Restore the associated flock first, then restore this record.');
             }
         }
-    } elseif ($type === 'inventory_replenishment') {
-        $parentId = $pdo->prepare('SELECT item_id FROM inventory_replenishment WHERE replenishment_id = ?');
-        $parentId->execute([$recordId]);
-        $itemId = $parentId->fetchColumn();
-        if ($itemId !== false) {
-            $parent = $pdo->prepare('SELECT 1 FROM poultry_inventory WHERE item_id = ? AND deleted_at IS NULL');
-            $parent->execute([$itemId]);
-            if ($parent->fetchColumn() === false) {
-                throw new RuntimeException('Restore the associated inventory item first.');
-            }
-        }
     }
     $table = $types[$type]['table'];
     $idColumn = $types[$type]['id'];

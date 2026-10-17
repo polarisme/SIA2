@@ -83,6 +83,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($formData['status'], USER_STATUSES, true)) {
         $errors['status'] = 'Select a valid status.';
     }
+
+    $currentUserId = (int) ($_SESSION['user']['user_id'] ?? 0);
+    if ($userId === $currentUserId) {
+        if ($formData['status'] === 'Inactive') {
+            $errors['status'] = 'You cannot deactivate the account you are currently signed in with.';
+        }
+        if ($formData['system_access'] !== $user['system_access']) {
+            $errors['system_access'] = 'You cannot change the system access of the account you are currently signed in with.';
+        }
+    }
     if ($password !== '' || $confirmPassword !== '') {
         if (mb_strlen($password) < 8) {
             $errors['password'] = 'Password must be at least 8 characters.';

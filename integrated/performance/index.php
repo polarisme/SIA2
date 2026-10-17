@@ -205,7 +205,7 @@ require __DIR__ . '/../../shared/includes/header.php';
     </div>
     <div class="col-lg-6">
         <section class="content-panel h-100">
-            <div class="panel-heading"><h2 class="h5 mb-0">7. Inventory Financial Exposure</h2></div>
+            <div class="panel-heading"><h2 class="h5 mb-0">5. Inventory Financial Exposure</h2></div>
             <div class="panel-body">
                 <div class="row g-3">
                     <div class="col-6"><div class="detail-label">Total inventory value</div><div class="detail-value fs-5">₱<?= money($inventoryExposure['total_value']) ?></div></div>
@@ -220,7 +220,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 </div>
 
 <section class="content-panel mb-4">
-    <div class="panel-heading"><h2 class="h5 mb-0">5. Production vs Financial Trends</h2></div>
+    <div class="panel-heading"><h2 class="h5 mb-0">6. Production vs Financial Trends</h2></div>
     <div class="panel-body">
         <?php if ($trend === []): ?>
             <p class="text-secondary mb-0">No production or financial history recorded yet.</p>
@@ -231,7 +231,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 </section>
 
 <section class="content-panel mb-4">
-    <div class="panel-heading"><h2 class="h5 mb-0">6. Batch Profitability</h2></div>
+    <div class="panel-heading"><h2 class="h5 mb-0">7. Batch Profitability</h2></div>
     <div class="table-responsive">
         <table class="table table-sm mb-0">
             <thead><tr><th>Batch</th><th class="text-end">Birds</th><th class="text-end">Eggs</th><th class="text-end">Mortality</th><th class="text-end">Revenue</th><th class="text-end">Cost</th><th class="text-end">Gross Profit</th></tr></thead>

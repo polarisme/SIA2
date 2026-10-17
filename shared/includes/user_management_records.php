@@ -11,9 +11,9 @@ declare(strict_types=1);
 const USER_STATUSES = ['Active', 'Inactive'];
 
 const SYSTEM_ROLE_MAP = [
-    'pms' => 'PMS User',
-    'ais' => 'AIS User',
-    'integrated' => 'Integrated User',
+    'pms' => 'Poultry Admin',
+    'ais' => 'Accounting Admin',
+    'integrated' => 'Manager',
     'user_management' => 'IT Administrator',
 ];
 
@@ -28,6 +28,19 @@ const USER_MANAGEMENT_AUDIT_ACTIONS = [
     'USER_CREATED', 'USER_EDITED', 'USER_ACTIVATED', 'USER_DEACTIVATED',
     'USER_DELETED', 'USER_RESTORED', 'USER_PERMANENTLY_DELETED', 'PASSWORD_RESET',
     'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'UNAUTHORIZED_ACCESS',
+];
+
+// Record-change audit (pms_audit_log) — one shared log for PMS/AIS/Integrated
+// data rows; table_name is how shared/user-management/audit-trail.php's
+// "Record Changes" tab labels which system a row belongs to.
+const RECORD_AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'SOFT_DELETE', 'RESTORE', 'PERMANENT_DELETE'];
+
+const TABLE_SYSTEM_MAP = [
+    'flocks' => 'pms', 'poultry_inventory' => 'pms', 'farm_activities' => 'pms',
+    'production_records' => 'pms', 'health_records' => 'pms', 'inventory_adjustments' => 'pms',
+    'financial_transactions' => 'ais', 'accounts_receivable' => 'ais', 'accounts_payable' => 'ais',
+    'transaction_documents' => 'ais', 'accounts' => 'ais',
+    'batch_costs' => 'integrated', 'inventory_replenishment' => 'integrated', 'scenarios' => 'integrated',
 ];
 
 /** Best-effort client IP — safe to be wrong/blank; never relied on as a real security control. */

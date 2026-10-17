@@ -109,6 +109,7 @@ $canManage = can_manage_flocks();
 $errors = [];
 $formData = inventory_form_data([]);
 $item = null;
+$stockHistory = [];
 $isEditing = false;
 $pageTitle = 'Inventory Dashboard';
 $stats = ['total_items' => 0, 'available_items' => 0, 'low_stock_items' => 0, 'out_of_stock_items' => 0, 'total_value' => 0];
@@ -254,9 +255,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
             }
 
             $pdo->beginTransaction();
-            $lock = $pdo->prepare('SELECT item_id FROM poultry_inventory WHERE item_id = ? AND deleted_at IS NULL FOR UPDATE');
+            $lock = $pdo->prepare('SELECT quantity FROM poultry_inventory WHERE item_id = ? AND deleted_at IS NULL FOR UPDATE');
             $lock->execute([$itemId]);
-            if ($lock->fetchColumn() === false) {
+            $quantityBefore = $lock->fetchColumn();
+            if ($quantityBefore === false) {
                 $pdo->rollBack();
                 set_flash('danger', 'The selected inventory item could not be found.');
                 redirect_to('index.php');
@@ -287,10 +289,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO && !$databaseFa
                 redirect_to('index.php?action=view&id=' . $itemId);
             }
 
+            $quantityAfter = number_format((float) $quantityBefore + ($direction === 'add' ? (float) $adjustment : -(float) $adjustment), 2, '.', '');
+            $historyStatement = $pdo->prepare(
+                'INSERT INTO inventory_adjustments
+                    (item_id, direction, quantity, quantity_before, quantity_after, reason, source, adjusted_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $historyStatement->execute([
+                $itemId,
+                $direction === 'add' ? 'Add' : 'Reduce',
+                $adjustment,
+                $quantityBefore,
+                $quantityAfter,
+                $reason,
+                'Manual',
+                current_username(),
+            ]);
+
             $pdo->commit();
             audit_pms_action($pdo, 'UPDATE', 'poultry_inventory', $itemId);
+            audit_pms_action($pdo, 'CREATE', 'inventory_adjustments', (int) $pdo->lastInsertId());
             $directionLabel = $direction === 'add' ? 'added to' : 'reduced from';
-            set_flash('success', 'Stock ' . $directionLabel . ' the item. Reason (not saved): ' . $reason);
+            set_flash('success', 'Stock ' . $directionLabel . ' the item and recorded in its stock history.');
             redirect_to('index.php?action=view&id=' . $itemId);
         } else {
             set_flash('danger', 'The requested action is not available.');
@@ -351,6 +371,12 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 redirect_to('index.php');
             }
             $pageTitle = 'Inventory ' . $item['item_code'];
+
+            $historyStatement = $pdo->prepare(
+                'SELECT * FROM inventory_adjustments WHERE item_id = ? ORDER BY adjusted_at DESC, adjustment_id DESC LIMIT 50'
+            );
+            $historyStatement->execute([$itemId]);
+            $stockHistory = $historyStatement->fetchAll();
         } else {
             $action = 'list';
             $statusSql = inventory_status_sql();
@@ -555,7 +581,7 @@ require __DIR__ . '/../../shared/includes/header.php';
         <section class="content-panel mt-4">
             <div class="panel-heading">
                 <h2 class="h5 mb-1">Adjust stock</h2>
-                <p class="small text-secondary mb-0">Simplified adjustment: this changes the current quantity only. The reason is required for this action but is not saved as a history record.</p>
+                <p class="small text-secondary mb-0">Changes the current quantity and records the adjustment, with its reason, in the stock history below.</p>
             </div>
             <div class="panel-body">
                 <form method="post" action="index.php?action=adjust" class="row g-3 align-items-end">
@@ -582,6 +608,33 @@ require __DIR__ . '/../../shared/includes/header.php';
             </div>
         </section>
     <?php endif; ?>
+
+    <section class="content-panel mt-4">
+        <div class="panel-heading"><h2 class="h5 mb-0">Stock history</h2></div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Date</th><th>Direction</th><th>Quantity</th><th>Before</th><th>After</th><th>Reason</th><th>Source</th><th>Adjusted by</th></tr></thead>
+                <tbody>
+                    <?php if ($stockHistory === []): ?>
+                        <tr><td colspan="8" class="text-center text-secondary py-4">No stock adjustments recorded for this item yet.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($stockHistory as $entry): ?>
+                            <tr>
+                                <td class="text-nowrap"><?= h((string) $entry['adjusted_at']) ?></td>
+                                <td><?= h($entry['direction']) ?></td>
+                                <td><?= number_format((float) $entry['quantity'], 2) ?> <?= h($item['unit']) ?></td>
+                                <td><?= number_format((float) $entry['quantity_before'], 2) ?></td>
+                                <td><?= number_format((float) $entry['quantity_after'], 2) ?></td>
+                                <td><?= h($entry['reason']) ?></td>
+                                <td><?= h($entry['source']) ?></td>
+                                <td><?= h($entry['adjusted_by'] ?? '—') ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
 
 <?php else: ?>
     <div class="page-heading d-flex flex-wrap align-items-end justify-content-between gap-3">

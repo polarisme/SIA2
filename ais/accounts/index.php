@@ -80,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                          WHERE account_id = :account_id'
                     );
                     $statement->execute($formData + ['description' => $description, 'account_id' => $accountId]);
+                    audit_pms_action($pdo, 'UPDATE', 'accounts', $accountId);
                     set_flash('success', 'Account updated.');
                 } else {
                     $statement = $pdo->prepare(
@@ -87,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                          VALUES (:account_code, :account_name, :account_type, :description, :status)'
                     );
                     $statement->execute($formData + ['description' => $description]);
+                    audit_pms_action($pdo, 'CREATE', 'accounts', (int) $pdo->lastInsertId());
                     set_flash('success', 'Account added.');
                 }
                 redirect_to('index.php');
@@ -106,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
             redirect_to('index.php');
         }
         $pdo->prepare("UPDATE accounts SET status = IF(status = 'Active', 'Inactive', 'Active') WHERE account_id = ?")->execute([$accountId]);
+        audit_pms_action($pdo, 'UPDATE', 'accounts', $accountId);
         set_flash('success', 'Account status updated.');
         redirect_to('index.php');
     }

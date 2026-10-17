@@ -15,6 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require __DIR__ . '/../../shared/config/database.php';
+require __DIR__ . '/../../shared/includes/user_management_records.php';
 
 function random_password(int $length = 12): string
 {
@@ -30,10 +31,10 @@ function random_password(int $length = 12): string
 $pdo = database_connection();
 
 $accounts = [
-    ['username' => 'pms_admin', 'display_name' => 'PMS Administrator', 'system_access' => 'pms', 'role' => 'PMS User'],
-    ['username' => 'ais_admin', 'display_name' => 'AIS Administrator', 'system_access' => 'ais', 'role' => 'AIS User'],
-    ['username' => 'integrated_admin', 'display_name' => 'Integrated Administrator', 'system_access' => 'integrated', 'role' => 'Integrated User'],
-    ['username' => 'it_admin', 'display_name' => 'IT Administrator', 'system_access' => 'user_management', 'role' => 'IT Administrator'],
+    ['username' => 'pms_admin', 'display_name' => 'PMS Administrator', 'system_access' => 'pms', 'role' => SYSTEM_ROLE_MAP['pms']],
+    ['username' => 'ais_admin', 'display_name' => 'AIS Administrator', 'system_access' => 'ais', 'role' => SYSTEM_ROLE_MAP['ais']],
+    ['username' => 'integrated_admin', 'display_name' => 'Integrated Administrator', 'system_access' => 'integrated', 'role' => SYSTEM_ROLE_MAP['integrated']],
+    ['username' => 'it_admin', 'display_name' => 'IT Administrator', 'system_access' => 'user_management', 'role' => SYSTEM_ROLE_MAP['user_management']],
 ];
 
 $created = [];

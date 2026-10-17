@@ -73,12 +73,12 @@ optional (each has a working default for a stock local WAMP/XAMPP install):
 
 ## The four systems
 
-| System | URL prefix | Who uses it | `system_access` value |
-|---|---|---|---|
-| Poultry Management System (PMS) | `/pms/` | Farm operations staff — flocks, inventory, activities, production, health | `pms` |
-| Accounting Information System (AIS) | `/ais/` | Accounting staff — transactions, receivables/payables, financial reports | `ais` |
-| Integrated System | `/integrated/` | Managers — batch costing, cost efficiency, replenishment, scenario analysis across both PMS and AIS data (read-only against both; never writes to either) | `integrated` |
-| User Management | `/shared/user-management/` | IT Administrator — create/edit/deactivate/delete accounts for the other three systems, review the audit trail | `user_management` |
+| System | URL prefix | Role (`users.role`) | What they do there | `system_access` value |
+|---|---|---|---|---|
+| Poultry Management System (PMS) | `/pms/` | Poultry Admin | flocks, inventory, activities, production, health | `pms` |
+| Accounting Information System (AIS) | `/ais/` | Accounting Admin | transactions, receivables/payables, financial reports | `ais` |
+| Integrated System | `/integrated/` | Manager | batch costing, cost efficiency, replenishment, scenario analysis across both PMS and AIS data (read-only against both; never writes to either) | `integrated` |
+| User Management | `/shared/user-management/` | IT Administrator | create/edit/deactivate/delete accounts for the other three systems, review the audit trail | `user_management` |
 
 Every account is authorized for exactly one of these four. Signing in checks
 the username, the password, **and** that the account's `system_access`

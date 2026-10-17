@@ -77,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 'projected_cost' => $formData['projected_cost'] !== '' ? (float) $formData['projected_cost'] : 0,
                 'projected_revenue' => $formData['projected_revenue'] !== '' ? (float) $formData['projected_revenue'] : 0,
             ]);
+            audit_pms_action($pdo, 'CREATE', 'scenarios', (int) $pdo->lastInsertId());
             set_flash('success', 'Scenario saved. This is a simulation only — no PMS or AIS records were changed.');
             redirect_to('index.php');
         }

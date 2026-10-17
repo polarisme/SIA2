@@ -122,6 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                     'due_date' => $formData['due_date'], 'amount_due' => $amountDue, 'amount_paid' => $amountPaid,
                     'status' => $status, 'remarks' => $remarks, 'ap_id' => $apId,
                 ]);
+                audit_pms_action($pdo, 'UPDATE', 'accounts_payable', $apId);
                 set_flash('success', 'Payable updated.');
                 redirect_to('index.php?action=view&id=' . $apId);
             }
@@ -137,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 'due_date' => $formData['due_date'], 'amount_due' => $amountDue, 'amount_paid' => $amountPaid,
                 'status' => $status, 'remarks' => $remarks,
             ]);
+            audit_pms_action($pdo, 'CREATE', 'accounts_payable', (int) $pdo->lastInsertId());
             set_flash('success', 'Payable added.');
             redirect_to('index.php?action=view&id=' . (int) $pdo->lastInsertId());
         }
@@ -164,6 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
         $newStatus = ar_ap_effective_status((float) $record['amount_due'], $newAmountPaid, $record['due_date']);
         $pdo->prepare('UPDATE accounts_payable SET amount_paid = ?, status = ? WHERE ap_id = ? AND deleted_at IS NULL')
             ->execute([$newAmountPaid, $newStatus, $apId]);
+        audit_pms_action($pdo, 'UPDATE', 'accounts_payable', $apId);
         set_flash('success', 'Payment of ₱' . money($paymentAmount) . ' recorded.');
         redirect_to('index.php?action=view&id=' . $apId);
     } elseif ($action === 'delete') {

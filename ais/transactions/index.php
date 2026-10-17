@@ -129,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                     'status' => $formData['status'],
                     'transaction_id' => $transactionId,
                 ]);
+                audit_pms_action($pdo, 'UPDATE', 'financial_transactions', $transactionId);
                 set_flash('success', 'Transaction updated.');
                 redirect_to('index.php?action=view&id=' . $transactionId);
             }
@@ -150,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 'status' => $formData['status'],
             ]);
             $newId = (int) $pdo->lastInsertId();
+            audit_pms_action($pdo, 'CREATE', 'financial_transactions', $newId);
             set_flash('success', 'Transaction recorded.');
             redirect_to('index.php?action=view&id=' . $newId);
         }
@@ -199,6 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 'INSERT INTO transaction_documents (transaction_id, document_type, file_name, file_path) VALUES (?, ?, ?, ?)'
             );
             $statement->execute([$transactionId, $documentType, $upload['file_name'], $upload['file_path']]);
+            audit_pms_action($pdo, 'CREATE', 'transaction_documents', (int) $pdo->lastInsertId());
             set_flash('success', 'Supporting document uploaded.');
         }
         redirect_to('index.php?action=view&id=' . $transactionId);

@@ -81,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 $itemId, $currentStock, $expectedDemand, $result['recommended_quantity'], $unitPrice, $availableBudget,
                 $result['status'] . ' — ' . $result['reason'], 'Pending',
             ]);
+            audit_pms_action($pdo, 'CREATE', 'inventory_replenishment', (int) $pdo->lastInsertId());
             set_flash('success', 'Replenishment analysis saved: ' . $result['status'] . '.');
         } else {
             set_flash('danger', $errors === [] ? 'The analysis could not be saved.' : implode(' ', $errors));
@@ -91,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
         $status = (string) ($_POST['status'] ?? '');
         if ($replenishmentId !== false && $replenishmentId >= 1 && in_array($status, INTEGRATED_REPLENISHMENT_STATUSES, true)) {
             $pdo->prepare('UPDATE inventory_replenishment SET status = ? WHERE replenishment_id = ?')->execute([$status, $replenishmentId]);
+            audit_pms_action($pdo, 'UPDATE', 'inventory_replenishment', $replenishmentId);
             set_flash('success', 'Status updated.');
         } else {
             set_flash('danger', 'The status could not be updated.');

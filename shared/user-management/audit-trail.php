@@ -19,6 +19,7 @@ try {
     $databaseError = 'The database could not be reached. Check the MySQL service and database configuration.';
 }
 
+$tab = (string) ($_GET['tab'] ?? 'account') === 'records' ? 'records' : 'account';
 $search = trim((string) ($_GET['search'] ?? ''));
 $actionFilter = trim((string) ($_GET['action_filter'] ?? ''));
 $systemFilter = trim((string) ($_GET['system_filter'] ?? ''));
@@ -28,67 +29,114 @@ $sort = (string) ($_GET['sort'] ?? 'event_time_desc');
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $perPage = 25;
 
-$sortColumns = [
-    'event_time_desc' => 'event_time DESC',
-    'event_time_asc' => 'event_time ASC',
-    'action_asc' => 'action ASC, event_time DESC',
-    'actor_asc' => 'actor_username ASC, event_time DESC',
-];
-$orderBy = $sortColumns[$sort] ?? $sortColumns['event_time_desc'];
-
 $events = [];
 $totalRows = 0;
+$totalPages = 1;
 
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
-        $conditions = [];
-        $parameters = [];
+        if ($tab === 'account') {
+            $sortColumns = [
+                'event_time_desc' => 'event_time DESC',
+                'event_time_asc' => 'event_time ASC',
+                'action_asc' => 'action ASC, event_time DESC',
+                'actor_asc' => 'actor_username ASC, event_time DESC',
+            ];
+            $orderBy = $sortColumns[$sort] ?? $sortColumns['event_time_desc'];
 
-        if ($search !== '') {
-            $conditions[] = '(actor_username LIKE ? OR target_username LIKE ? OR description LIKE ?)';
-            $parameters[] = '%' . $search . '%';
-            $parameters[] = '%' . $search . '%';
-            $parameters[] = '%' . $search . '%';
-        }
-        if ($actionFilter !== '' && in_array($actionFilter, USER_MANAGEMENT_AUDIT_ACTIONS, true)) {
-            $conditions[] = 'action = ?';
-            $parameters[] = $actionFilter;
-        }
-        if ($systemFilter !== '' && array_key_exists($systemFilter, SYSTEM_LABELS)) {
-            $conditions[] = 'system_context = ?';
-            $parameters[] = $systemFilter;
-        }
-        if ($dateFrom !== '') {
-            $conditions[] = 'event_time >= ?';
-            $parameters[] = $dateFrom . ' 00:00:00';
-        }
-        if ($dateTo !== '') {
-            $conditions[] = 'event_time <= ?';
-            $parameters[] = $dateTo . ' 23:59:59';
-        }
+            $conditions = [];
+            $parameters = [];
+            if ($search !== '') {
+                $conditions[] = '(actor_username LIKE ? OR target_username LIKE ? OR description LIKE ?)';
+                $parameters[] = '%' . $search . '%';
+                $parameters[] = '%' . $search . '%';
+                $parameters[] = '%' . $search . '%';
+            }
+            if ($actionFilter !== '' && in_array($actionFilter, USER_MANAGEMENT_AUDIT_ACTIONS, true)) {
+                $conditions[] = 'action = ?';
+                $parameters[] = $actionFilter;
+            }
+            if ($systemFilter !== '' && array_key_exists($systemFilter, SYSTEM_LABELS)) {
+                $conditions[] = 'system_context = ?';
+                $parameters[] = $systemFilter;
+            }
+            if ($dateFrom !== '') {
+                $conditions[] = 'event_time >= ?';
+                $parameters[] = $dateFrom . ' 00:00:00';
+            }
+            if ($dateTo !== '') {
+                $conditions[] = 'event_time <= ?';
+                $parameters[] = $dateTo . ' 23:59:59';
+            }
+            $whereClause = $conditions === [] ? '' : ('WHERE ' . implode(' AND ', $conditions));
 
-        $whereClause = $conditions === [] ? '' : ('WHERE ' . implode(' AND ', $conditions));
+            $countStatement = $pdo->prepare("SELECT COUNT(*) FROM user_management_audit_log $whereClause");
+            $countStatement->execute($parameters);
+            $totalRows = (int) $countStatement->fetchColumn();
+            $totalPages = max(1, (int) ceil($totalRows / $perPage));
+            $page = min($page, $totalPages);
+            $offset = ($page - 1) * $perPage;
 
-        $countStatement = $pdo->prepare("SELECT COUNT(*) FROM user_management_audit_log $whereClause");
-        $countStatement->execute($parameters);
-        $totalRows = (int) $countStatement->fetchColumn();
+            $listStatement = $pdo->prepare(
+                "SELECT * FROM user_management_audit_log $whereClause ORDER BY $orderBy LIMIT $perPage OFFSET $offset"
+            );
+            $listStatement->execute($parameters);
+            $events = $listStatement->fetchAll();
+        } else {
+            // "records" tab: pms_audit_log is the one shared CRUD log for PMS/AIS/
+            // Integrated data rows (see shared/includes/bootstrap.php's
+            // audit_pms_action()). table_name tells us which system a row is from.
+            $sortColumns = [
+                'event_time_desc' => 'action_at DESC',
+                'event_time_asc' => 'action_at ASC',
+                'action_asc' => 'action ASC, action_at DESC',
+                'actor_asc' => 'username ASC, action_at DESC',
+            ];
+            $orderBy = $sortColumns[$sort] ?? $sortColumns['event_time_desc'];
 
-        $totalPages = max(1, (int) ceil($totalRows / $perPage));
-        $page = min($page, $totalPages);
-        $offset = ($page - 1) * $perPage;
+            $conditions = [];
+            $parameters = [];
+            if ($search !== '') {
+                $conditions[] = 'username LIKE ?';
+                $parameters[] = '%' . $search . '%';
+            }
+            if ($actionFilter !== '' && in_array($actionFilter, RECORD_AUDIT_ACTIONS, true)) {
+                $conditions[] = 'action = ?';
+                $parameters[] = $actionFilter;
+            }
+            if ($systemFilter !== '' && in_array($systemFilter, ['pms', 'ais', 'integrated'], true)) {
+                $tablesForSystem = array_keys(array_filter(TABLE_SYSTEM_MAP, static fn ($system) => $system === $systemFilter));
+                $conditions[] = 'table_name IN (' . implode(',', array_fill(0, count($tablesForSystem), '?')) . ')';
+                $parameters = array_merge($parameters, $tablesForSystem);
+            }
+            if ($dateFrom !== '') {
+                $conditions[] = 'action_at >= ?';
+                $parameters[] = $dateFrom . ' 00:00:00';
+            }
+            if ($dateTo !== '') {
+                $conditions[] = 'action_at <= ?';
+                $parameters[] = $dateTo . ' 23:59:59';
+            }
+            $whereClause = $conditions === [] ? '' : ('WHERE ' . implode(' AND ', $conditions));
 
-        $listStatement = $pdo->prepare(
-            "SELECT * FROM user_management_audit_log $whereClause ORDER BY $orderBy LIMIT $perPage OFFSET $offset"
-        );
-        $listStatement->execute($parameters);
-        $events = $listStatement->fetchAll();
+            $countStatement = $pdo->prepare("SELECT COUNT(*) FROM pms_audit_log $whereClause");
+            $countStatement->execute($parameters);
+            $totalRows = (int) $countStatement->fetchColumn();
+            $totalPages = max(1, (int) ceil($totalRows / $perPage));
+            $page = min($page, $totalPages);
+            $offset = ($page - 1) * $perPage;
+
+            $listStatement = $pdo->prepare(
+                "SELECT * FROM pms_audit_log $whereClause ORDER BY $orderBy LIMIT $perPage OFFSET $offset"
+            );
+            $listStatement->execute($parameters);
+            $events = $listStatement->fetchAll();
+        }
     } catch (PDOException $exception) {
         error_log('Audit trail query failed: ' . $exception->getMessage());
         $databaseError = 'The audit trail could not be loaded because of a database error.';
     }
 }
-
-$totalPages = max(1, (int) ceil($totalRows / $perPage));
 
 function audit_query_string(array $overrides = []): string
 {
@@ -103,22 +151,32 @@ require __DIR__ . '/../includes/header.php';
 <div class="page-heading">
     <div class="eyebrow">USER MANAGEMENT</div>
     <h1>Audit Trail</h1>
-    <p>A centralized record of every account and security event across PMS, AIS, Integrated, and User Management.</p>
+    <p>A centralized, read-only record of account/security events and of every create, update, delete, and restore across PMS, AIS, and Integrated.</p>
 </div>
 <?php if ($databaseError !== null): ?><div class="alert alert-danger" role="alert"><?= h($databaseError) ?></div><?php endif; ?>
+
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link<?= $tab === 'account' ? ' active' : '' ?>" href="audit-trail.php?tab=account">Account &amp; Security Events</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link<?= $tab === 'records' ? ' active' : '' ?>" href="audit-trail.php?tab=records">Record Changes</a>
+    </li>
+</ul>
 
 <section class="content-panel mb-4">
     <div class="panel-body">
         <form method="get" action="audit-trail.php" class="row g-2 align-items-end">
+            <input type="hidden" name="tab" value="<?= h($tab) ?>">
             <div class="col-md-3">
                 <label class="form-label" for="search">Search</label>
-                <input class="form-control" id="search" name="search" value="<?= h($search) ?>" placeholder="Actor, target, description">
+                <input class="form-control" id="search" name="search" value="<?= h($search) ?>" placeholder="<?= $tab === 'account' ? 'Actor, target, description' : 'Username' ?>">
             </div>
             <div class="col-md-2">
                 <label class="form-label" for="action_filter">Action</label>
                 <select class="form-select" id="action_filter" name="action_filter">
                     <option value="">All actions</option>
-                    <?php foreach (USER_MANAGEMENT_AUDIT_ACTIONS as $actionOption): ?>
+                    <?php foreach (($tab === 'account' ? USER_MANAGEMENT_AUDIT_ACTIONS : RECORD_AUDIT_ACTIONS) as $actionOption): ?>
                         <option value="<?= h($actionOption) ?>" <?= $actionFilter === $actionOption ? 'selected' : '' ?>><?= h($actionOption) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -127,7 +185,7 @@ require __DIR__ . '/../includes/header.php';
                 <label class="form-label" for="system_filter">System</label>
                 <select class="form-select" id="system_filter" name="system_filter">
                     <option value="">All systems</option>
-                    <?php foreach (SYSTEM_LABELS as $systemKey => $systemLabel): ?>
+                    <?php foreach (($tab === 'account' ? SYSTEM_LABELS : array_intersect_key(SYSTEM_LABELS, ['pms' => 1, 'ais' => 1, 'integrated' => 1])) as $systemKey => $systemLabel): ?>
                         <option value="<?= h($systemKey) ?>" <?= $systemFilter === $systemKey ? 'selected' : '' ?>><?= h($systemLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -153,7 +211,7 @@ require __DIR__ . '/../includes/header.php';
                 </select>
             </div>
             <div class="col-12">
-                <a class="btn btn-sm btn-outline-secondary" href="audit-trail.php">Clear filters</a>
+                <a class="btn btn-sm btn-outline-secondary" href="audit-trail.php?tab=<?= h($tab) ?>">Clear filters</a>
             </div>
         </form>
     </div>
@@ -165,26 +223,48 @@ require __DIR__ . '/../includes/header.php';
         <span class="text-secondary small"><?= number_format($totalRows) ?> total</span>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>Date / Time</th><th>Actor</th><th>Action</th><th>Target</th><th>System</th><th>Description</th><th>IP Address</th></tr></thead>
-            <tbody>
-                <?php if ($events === []): ?>
-                    <tr><td colspan="7" class="text-center text-secondary py-4">No audit events match these filters.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($events as $event): ?>
-                        <tr>
-                            <td class="text-nowrap"><?= h((string) $event['event_time']) ?></td>
-                            <td><?= h($event['actor_username'] ?? '—') ?></td>
-                            <td><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
-                            <td><?= h($event['target_username'] ?? '—') ?></td>
-                            <td><?= $event['system_context'] ? h(SYSTEM_LABELS[$event['system_context']] ?? $event['system_context']) : '—' ?></td>
-                            <td><?= h($event['description'] ?? '') ?></td>
-                            <td><?= h($event['ip_address'] ?? '—') ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
+        <?php if ($tab === 'account'): ?>
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Date / Time</th><th>Actor</th><th>Action</th><th>Target</th><th>System</th><th>Description</th><th>IP Address</th></tr></thead>
+                <tbody>
+                    <?php if ($events === []): ?>
+                        <tr><td colspan="7" class="text-center text-secondary py-4">No audit events match these filters.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($events as $event): ?>
+                            <tr>
+                                <td class="text-nowrap"><?= h((string) $event['event_time']) ?></td>
+                                <td><?= h($event['actor_username'] ?? '—') ?></td>
+                                <td><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
+                                <td><?= h($event['target_username'] ?? '—') ?></td>
+                                <td><?= $event['system_context'] ? h(SYSTEM_LABELS[$event['system_context']] ?? $event['system_context']) : '—' ?></td>
+                                <td><?= h($event['description'] ?? '') ?></td>
+                                <td><?= h($event['ip_address'] ?? '—') ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Date / Time</th><th>User</th><th>Action</th><th>System</th><th>Table</th><th>Record ID</th></tr></thead>
+                <tbody>
+                    <?php if ($events === []): ?>
+                        <tr><td colspan="6" class="text-center text-secondary py-4">No record changes match these filters.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($events as $event): ?>
+                            <tr>
+                                <td class="text-nowrap"><?= h((string) $event['action_at']) ?></td>
+                                <td><?= h($event['username']) ?></td>
+                                <td><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
+                                <td><?= h(SYSTEM_LABELS[TABLE_SYSTEM_MAP[$event['table_name']] ?? ''] ?? '—') ?></td>
+                                <td><?= h($event['table_name']) ?></td>
+                                <td><?= (int) $event['record_id'] ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
     <?php if ($totalPages > 1): ?>
         <div class="panel-body">

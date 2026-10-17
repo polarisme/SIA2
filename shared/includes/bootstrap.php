@@ -251,7 +251,8 @@ function audit_pms_action(PDO $pdo, string $action, string $table, int $recordId
 {
     $allowedTables = [
         'flocks', 'poultry_inventory', 'farm_activities', 'production_records', 'health_records',
-        'financial_transactions', 'accounts_receivable', 'accounts_payable', 'transaction_documents',
+        'inventory_adjustments',
+        'financial_transactions', 'accounts_receivable', 'accounts_payable', 'transaction_documents', 'accounts',
         'batch_costs', 'inventory_replenishment', 'scenarios',
     ];
     $allowedActions = ['CREATE', 'UPDATE', 'SOFT_DELETE', 'RESTORE', 'PERMANENT_DELETE'];

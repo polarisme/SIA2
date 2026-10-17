@@ -21,6 +21,12 @@ if ($userId === false || $userId === null || $userId < 1) {
     redirect_to('index.php');
 }
 
+$currentUserId = (int) ($_SESSION['user']['user_id'] ?? 0);
+if ($userId === $currentUserId) {
+    set_flash('danger', 'You cannot deactivate the account you are currently signed in with.');
+    redirect_to('index.php');
+}
+
 $statement = $pdo->prepare('SELECT username, status, system_access FROM users WHERE user_id = ? AND deleted_at IS NULL');
 $statement->execute([$userId]);
 $target = $statement->fetch();
