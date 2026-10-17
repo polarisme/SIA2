@@ -3,6 +3,8 @@
 -- keeps a payment history — previously a payment only updated amount_paid/
 -- status on the AR/AP row itself, with no ledger entry and no history.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 SET @db = DATABASE();
@@ -34,3 +36,4 @@ CREATE TABLE IF NOT EXISTS ar_ap_payments (
     KEY idx_ar_ap_payments_ledger_record (ledger, record_id),
     KEY idx_ar_ap_payments_transaction (transaction_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

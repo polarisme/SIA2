@@ -2,6 +2,8 @@
 -- pattern from 001_security_recycle_bin_reports.sql. Safe to run repeatedly in
 -- MySQL 8.4/phpMyAdmin. Existing records are preserved; this only adds columns.
 
+SET NAMES utf8mb4;
+
 SET @ais_schema = DATABASE();
 
 SET @ais_sql = IF(
@@ -68,3 +70,4 @@ SET @ais_sql = IF(
 	'ALTER TABLE transaction_documents ADD INDEX idx_documents_deleted_at (deleted_at)', 'SELECT 1'
 );
 PREPARE ais_stmt FROM @ais_sql; EXECUTE ais_stmt; DEALLOCATE PREPARE ais_stmt;
+

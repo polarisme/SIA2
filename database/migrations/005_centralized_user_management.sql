@@ -12,6 +12,8 @@
 -- Safe to run repeatedly (RENAME TABLE / ADD COLUMN are all information_schema
 -- guarded below).
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 -- 1. Rename platform_users -> users (only if platform_users exists and users doesn't yet).
@@ -115,3 +117,4 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE users
 SET display_name = 'PMS Administrator', system_access = 'pms', role = 'PMS User'
 WHERE username = 'admin' AND (system_access <> 'pms' OR role <> 'PMS User');
+

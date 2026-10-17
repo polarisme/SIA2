@@ -4,6 +4,8 @@
 -- this only adds columns. batch_profitability is intentionally NOT touched here —
 -- it is a system-managed cache with no user delete action, not a user record type.
 
+SET NAMES utf8mb4;
+
 SET @int_schema = DATABASE();
 
 SET @int_sql = IF(
@@ -54,3 +56,4 @@ SET @int_sql = IF(
 	'ALTER TABLE scenarios ADD INDEX idx_scenarios_deleted_at (deleted_at)', 'SELECT 1'
 );
 PREPARE int_stmt FROM @int_sql; EXECUTE int_stmt; DEALLOCATE PREPARE int_stmt;
+

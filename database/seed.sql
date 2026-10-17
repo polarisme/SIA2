@@ -11,6 +11,8 @@
 -- make this idempotent. Run after database/schema.sql.
 -- ============================================================================
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 INSERT IGNORE INTO accounts (account_code, account_name, account_type, description, status) VALUES
@@ -27,3 +29,4 @@ INSERT IGNORE INTO accounts (account_code, account_name, account_type, descripti
 ('5300', 'Labor Expense', 'Expense', 'Farm labor costs', 'Active'),
 ('5400', 'Utilities Expense', 'Expense', 'Electricity and water', 'Active'),
 ('5500', 'Farm Supplies Expense', 'Expense', 'Other farm supplies', 'Active');
+

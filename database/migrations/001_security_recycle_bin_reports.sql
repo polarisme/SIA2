@@ -1,6 +1,8 @@
 -- Poultry Farm Management System: soft deletion and lightweight audit log.
 -- Safe to run repeatedly in MySQL 8.4/phpMyAdmin. Existing records are preserved.
 
+SET NAMES utf8mb4;
+
 SET @pms_schema = DATABASE();
 
 SET @pms_sql = IF(

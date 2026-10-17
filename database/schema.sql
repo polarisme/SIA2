@@ -23,6 +23,8 @@
 -- database in place.
 -- ============================================================================
 
+SET NAMES utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS sia2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE sia2;
 
@@ -378,3 +380,4 @@ CREATE TABLE IF NOT EXISTS scenarios (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
+

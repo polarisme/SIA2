@@ -5,6 +5,8 @@
 -- unaffected; base_flock_id is informational only and is never written
 -- back to, so this still never modifies PMS or AIS data.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 SET @db = DATABASE();
@@ -43,3 +45,4 @@ SET @sql = IF(
     'SELECT 1'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+

@@ -4,6 +4,8 @@
 -- source for Health Records / Farm Activities inventory deductions
 -- (source = 'Health Record' / 'Farm Activity'). Safe to run repeatedly.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 CREATE TABLE IF NOT EXISTS inventory_adjustments (
@@ -23,3 +25,4 @@ CREATE TABLE IF NOT EXISTS inventory_adjustments (
     KEY idx_inventory_adjustments_adjusted_at (adjusted_at),
     KEY idx_inventory_adjustments_source (source, source_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

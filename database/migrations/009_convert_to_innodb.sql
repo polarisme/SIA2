@@ -14,6 +14,8 @@
 -- to be genuinely transactional. Safe to run repeatedly — converting a
 -- table already on InnoDB is a no-op.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 ALTER TABLE accounts ENGINE=InnoDB;
@@ -30,3 +32,4 @@ ALTER TABLE poultry_inventory ENGINE=InnoDB;
 ALTER TABLE production_records ENGINE=InnoDB;
 ALTER TABLE scenarios ENGINE=InnoDB;
 ALTER TABLE transaction_documents ENGINE=InnoDB;
+

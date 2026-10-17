@@ -6,8 +6,11 @@
 -- safe to run repeatedly and won't touch a role an IT Administrator has since
 -- customized by hand.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 UPDATE users SET role = 'Poultry Admin' WHERE system_access = 'pms' AND role = 'PMS User';
 UPDATE users SET role = 'Accounting Admin' WHERE system_access = 'ais' AND role = 'AIS User';
 UPDATE users SET role = 'Manager' WHERE system_access = 'integrated' AND role = 'Integrated User';
+

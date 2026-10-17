@@ -2,6 +2,8 @@
 -- Vaccination/Medication (3.5) — mirrors what health_records already had
 -- (medicine_or_vaccine/quantity_used), which farm_activities never had.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 SET @db = DATABASE();
@@ -18,3 +20,4 @@ SET @sql = IF(
     'SELECT 1'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+

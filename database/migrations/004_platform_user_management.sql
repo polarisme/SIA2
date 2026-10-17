@@ -14,6 +14,8 @@
 -- touch flocks, financial_transactions, accounts, pms_audit_log, or any other
 -- existing table.
 
+SET NAMES utf8mb4;
+
 USE sia2;
 
 CREATE TABLE IF NOT EXISTS platform_users (
@@ -51,3 +53,4 @@ CREATE TABLE IF NOT EXISTS platform_audit_log (
 -- change. INSERT IGNORE + the UNIQUE key on username make this idempotent.
 INSERT IGNORE INTO platform_users (username, full_name, password_hash, role, status)
 VALUES ('admin', 'Platform Administrator', '$2y$10$rbb7VT5hJ4H2JFzE8Xi5wes1hL8oO4ECpEN1xf8y3rKYq6jew4ezW', 'Administrator', 'Active');
+
