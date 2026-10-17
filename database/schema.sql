@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS accounts_receivable (
   `customer_name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
   `invoice_number` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `transaction_id` int DEFAULT NULL,
+  `flock_id` int DEFAULT NULL,
   `invoice_date` date NOT NULL,
   `due_date` date NOT NULL,
   `amount_due` decimal(14,2) NOT NULL,
@@ -261,6 +262,7 @@ CREATE TABLE IF NOT EXISTS accounts_payable (
   `supplier_name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
   `invoice_number` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `transaction_id` int DEFAULT NULL,
+  `flock_id` int DEFAULT NULL,
   `invoice_date` date NOT NULL,
   `due_date` date NOT NULL,
   `amount_due` decimal(14,2) NOT NULL,
@@ -273,6 +275,21 @@ CREATE TABLE IF NOT EXISTS accounts_payable (
   PRIMARY KEY (`ap_id`),
   KEY `fk_ap_transaction` (`transaction_id`),
   KEY `idx_ap_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ar_ap_payments (
+  `payment_id` int NOT NULL AUTO_INCREMENT,
+  `ledger` enum('AR','AP') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `record_id` int NOT NULL,
+  `amount` decimal(14,2) NOT NULL,
+  `payment_date` date NOT NULL,
+  `payment_method` enum('Cash','Bank Transfer','E-Wallet','Credit','Other') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Cash',
+  `transaction_id` int DEFAULT NULL,
+  `recorded_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `recorded_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`payment_id`),
+  KEY `idx_ar_ap_payments_ledger_record` (`ledger`,`record_id`),
+  KEY `idx_ar_ap_payments_transaction` (`transaction_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS accounts (

@@ -14,7 +14,9 @@ $reportTypes = [
     'income' => 'Income Report',
     'expense' => 'Expense Report',
     'income_expense_summary' => 'Income vs Expense Summary',
-    'net_income_summary' => 'Net Income Summary',
+    'net_income_summary' => 'Income Statement',
+    'cash_flow' => 'Cash Flow Summary',
+    'financial_position' => 'Statement of Financial Position (Simplified)',
     'ar' => 'Accounts Receivable Report',
     'ap' => 'Accounts Payable Report',
 ];
@@ -208,36 +210,168 @@ if (isset($_GET['type'])) {
             $pdf->totalsRow('TOTAL EXPENSE', [pesos($totalExpense)], [140, 137]);
             $pdf->totalsRow('NET INCOME', [pesos($totalIncome - $totalExpense)], [140, 137]);
         } elseif ($type === 'net_income_summary') {
+            // "Income Statement": revenue by category, expenses by category, net income.
             $conditions = ["t.status <> 'Cancelled'", 't.deleted_at IS NULL'];
             $parameters = [];
             if ($dateFrom !== '') { $conditions[] = 't.transaction_date >= ?'; $parameters[] = $dateFrom; }
             if ($dateTo !== '') { $conditions[] = 't.transaction_date <= ?'; $parameters[] = $dateTo; }
             $statement = $pdo->prepare(
-                "SELECT DATE_FORMAT(transaction_date, '%Y-%m') AS ym, transaction_type, COALESCE(SUM(amount), 0) AS total
-                 FROM financial_transactions t WHERE " . implode(' AND ', $conditions) . ' GROUP BY ym, transaction_type ORDER BY ym'
+                'SELECT transaction_type, category, COALESCE(SUM(amount), 0) AS total FROM financial_transactions t
+                 WHERE ' . implode(' AND ', $conditions) . ' GROUP BY transaction_type, category ORDER BY transaction_type, total DESC'
             );
             $statement->execute($parameters);
-            $map = [];
-            foreach ($statement->fetchAll() as $row) {
-                $map[$row['ym']][$row['transaction_type']] = (float) $row['total'];
-            }
-            if ($map === []) { http_response_code(404); exit('No records match the selected report filters.'); }
-            ksort($map);
+            $rows = $statement->fetchAll();
+            if ($rows === []) { http_response_code(404); exit('No records match the selected report filters.'); }
 
             $pdf->filtersText = implode('; ', $appliedFilters);
             $pdf->AddPage();
-            $widths = [70, 69, 69, 69];
-            $pdf->tableHeader(['Month', 'Income', 'Expense', 'Net Income'], $widths);
-            $grandIncome = 0.0;
-            $grandExpense = 0.0;
-            foreach ($map as $ym => $values) {
-                $income = $values['Income'] ?? 0.0;
-                $expense = $values['Expense'] ?? 0.0;
-                $pdf->tableRow([$ym, pesos($income), pesos($expense), pesos($income - $expense)], $widths, ['L', 'R', 'R', 'R']);
-                $grandIncome += $income;
-                $grandExpense += $expense;
+            $widths = [140, 137];
+            $pdf->tableHeader(['Category', 'Amount'], $widths);
+            $totalRevenue = 0.0;
+            $totalExpenses = 0.0;
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'REVENUE', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            foreach ($rows as $row) {
+                if ($row['transaction_type'] !== 'Income') { continue; }
+                $pdf->tableRow([$row['category'], pesos($row['total'])], $widths, ['L', 'R']);
+                $totalRevenue += (float) $row['total'];
             }
-            $pdf->totalsRow('GRAND TOTAL', [pesos($grandIncome), pesos($grandExpense), pesos($grandIncome - $grandExpense)], $widths);
+            $pdf->totalsRow('TOTAL REVENUE', [pesos($totalRevenue)], [140, 137]);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'EXPENSES', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            foreach ($rows as $row) {
+                if ($row['transaction_type'] !== 'Expense') { continue; }
+                $pdf->tableRow([$row['category'], pesos($row['total'])], $widths, ['L', 'R']);
+                $totalExpenses += (float) $row['total'];
+            }
+            $pdf->totalsRow('TOTAL EXPENSES', [pesos($totalExpenses)], [140, 137]);
+            $pdf->totalsRow('NET INCOME', [pesos($totalRevenue - $totalExpenses)], [140, 137]);
+        } elseif ($type === 'cash_flow') {
+            // Opening balance = net of ALL non-cancelled transactions strictly before the range.
+            $openingBalance = 0.0;
+            if ($dateFrom !== '') {
+                $openingStatement = $pdo->prepare(
+                    "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE -amount END), 0)
+                     FROM financial_transactions WHERE status <> 'Cancelled' AND deleted_at IS NULL AND transaction_date < ?"
+                );
+                $openingStatement->execute([$dateFrom]);
+                $openingBalance = (float) $openingStatement->fetchColumn();
+            }
+
+            $conditions = ["status <> 'Cancelled'", 'deleted_at IS NULL'];
+            $parameters = [];
+            if ($dateFrom !== '') { $conditions[] = 'transaction_date >= ?'; $parameters[] = $dateFrom; }
+            if ($dateTo !== '') { $conditions[] = 'transaction_date <= ?'; $parameters[] = $dateTo; }
+            $whereSql = implode(' AND ', $conditions);
+
+            $cashInStatement = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM financial_transactions WHERE transaction_type = 'Income' AND $whereSql");
+            $cashInStatement->execute($parameters);
+            $cashIn = (float) $cashInStatement->fetchColumn();
+
+            $cashOutStatement = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM financial_transactions WHERE transaction_type = 'Expense' AND $whereSql");
+            $cashOutStatement->execute($parameters);
+            $cashOut = (float) $cashOutStatement->fetchColumn();
+
+            $closingBalance = $openingBalance + $cashIn - $cashOut;
+
+            $byMethodStatement = $pdo->prepare(
+                "SELECT payment_method, transaction_type, COALESCE(SUM(amount), 0) AS total FROM financial_transactions
+                 WHERE $whereSql GROUP BY payment_method, transaction_type ORDER BY payment_method"
+            );
+            $byMethodStatement->execute($parameters);
+            $byMethod = $byMethodStatement->fetchAll();
+
+            $byCategoryStatement = $pdo->prepare(
+                "SELECT category, transaction_type, COALESCE(SUM(amount), 0) AS total FROM financial_transactions
+                 WHERE $whereSql GROUP BY category, transaction_type ORDER BY transaction_type, total DESC"
+            );
+            $byCategoryStatement->execute($parameters);
+            $byCategory = $byCategoryStatement->fetchAll();
+
+            $pdf->filtersText = implode('; ', $appliedFilters);
+            $pdf->AddPage();
+            $widths = [140, 137];
+            $pdf->tableHeader(['Item', 'Amount'], $widths);
+            $pdf->tableRow(['Opening Balance', pesos($openingBalance)], $widths, ['L', 'R']);
+            $pdf->tableRow(['Cash In (Income)', pesos($cashIn)], $widths, ['L', 'R']);
+            $pdf->tableRow(['Cash Out (Expense)', pesos($cashOut)], $widths, ['L', 'R']);
+            $pdf->totalsRow('CLOSING BALANCE', [pesos($closingBalance)], [140, 137]);
+
+            $pdf->Ln(4);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'BY PAYMENT METHOD', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            foreach ($byMethod as $row) {
+                $sign = $row['transaction_type'] === 'Income' ? '+' : '-';
+                $pdf->tableRow([$row['payment_method'] . ' (' . $row['transaction_type'] . ')', $sign . pesos($row['total'])], $widths, ['L', 'R']);
+            }
+
+            $pdf->Ln(4);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'BY CATEGORY', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            foreach ($byCategory as $row) {
+                $sign = $row['transaction_type'] === 'Income' ? '+' : '-';
+                $pdf->tableRow([$row['category'] . ' (' . $row['transaction_type'] . ')', $sign . pesos($row['total'])], $widths, ['L', 'R']);
+            }
+        } elseif ($type === 'financial_position') {
+            // "As of" date: reuses date_to; date_from is not applicable to a point-in-time statement.
+            $asOfDate = $dateTo !== '' ? $dateTo : date('Y-m-d');
+
+            $cashStatement = $pdo->prepare(
+                "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE -amount END), 0)
+                 FROM financial_transactions WHERE status <> 'Cancelled' AND deleted_at IS NULL AND transaction_date <= ?"
+            );
+            $cashStatement->execute([$asOfDate]);
+            $cash = (float) $cashStatement->fetchColumn();
+
+            $arStatement = $pdo->prepare(
+                'SELECT COALESCE(SUM(amount_due - amount_paid), 0) FROM accounts_receivable WHERE deleted_at IS NULL AND invoice_date <= ?'
+            );
+            $arStatement->execute([$asOfDate]);
+            $arOutstanding = (float) $arStatement->fetchColumn();
+
+            $apStatement = $pdo->prepare(
+                'SELECT COALESCE(SUM(amount_due - amount_paid), 0) FROM accounts_payable WHERE deleted_at IS NULL AND invoice_date <= ?'
+            );
+            $apStatement->execute([$asOfDate]);
+            $apOutstanding = (float) $apStatement->fetchColumn();
+
+            // Inventory value is read directly from PMS — never written to from AIS.
+            $inventoryValue = 0.0;
+            try {
+                $inventoryStatement = $pdo->query('SELECT COALESCE(SUM(quantity * unit_cost), 0) FROM poultry_inventory WHERE deleted_at IS NULL');
+                $inventoryValue = (float) $inventoryStatement->fetchColumn();
+            } catch (PDOException $exception) {
+                error_log('Statement of Financial Position: PMS inventory lookup failed: ' . $exception->getMessage());
+            }
+
+            $totalAssets = $cash + $arOutstanding + $inventoryValue;
+            $totalLiabilities = $apOutstanding;
+            $equity = $totalAssets - $totalLiabilities;
+
+            $pdf->filtersText = 'As of ' . $asOfDate;
+            $pdf->AddPage();
+            $pdf->SetFont('Arial', 'I', 9);
+            $pdf->Cell(0, 6, 'Simplified - single-entry records', 0, 1, 'C');
+            $pdf->Ln(2);
+            $widths = [140, 137];
+            $pdf->tableHeader(['Item', 'Amount'], $widths);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'ASSETS', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->tableRow(['Cash', pesos($cash)], $widths, ['L', 'R']);
+            $pdf->tableRow(['Accounts Receivable (outstanding)', pesos($arOutstanding)], $widths, ['L', 'R']);
+            $pdf->tableRow(['Inventory (from PMS, read-only)', pesos($inventoryValue)], $widths, ['L', 'R']);
+            $pdf->totalsRow('TOTAL ASSETS', [pesos($totalAssets)], [140, 137]);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(277, 7, 'LIABILITIES', 1, 1, 'L');
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->tableRow(['Accounts Payable (outstanding)', pesos($apOutstanding)], $widths, ['L', 'R']);
+            $pdf->totalsRow('TOTAL LIABILITIES', [pesos($totalLiabilities)], [140, 137]);
+            $pdf->totalsRow('EQUITY (Assets - Liabilities)', [pesos($equity)], [140, 137]);
         } elseif ($type === 'ar' || $type === 'ap') {
             if ($statusFilter !== '' && !in_array($statusFilter, AIS_AR_AP_STATUSES, true)) {
                 http_response_code(400);
@@ -336,6 +470,7 @@ require __DIR__ . '/../../shared/includes/header.php';
         <p class="small text-secondary mt-3 mb-0">
             Income, Expense, and Summary reports filter by transaction date. Receivable and Payable reports filter by invoice date.
             Date range and status are optional. Totals on Income/Expense reports always exclude Cancelled transactions.
+            For the Statement of Financial Position, use the "To" field as the as-of date (defaults to today) — "From" is not used.
         </p>
     </div>
 </section>

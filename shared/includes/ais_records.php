@@ -11,6 +11,50 @@ const AIS_DOCUMENT_TYPES = ['Receipt', 'Invoice', 'Official Receipt', 'Purchase 
 const AIS_AR_AP_STATUSES = ['Unpaid', 'Partially Paid', 'Paid', 'Overdue'];
 const AIS_ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
 
+/**
+ * Automated Income/Expense Recording (4.1): posts one financial_transactions
+ * row for an AR/AP payment (Income for AR, Expense for AP) and one
+ * ar_ap_payments history row, in the same transaction as the AR/AP record's
+ * own amount_paid/status update — the caller is expected to already be
+ * inside a transaction covering that update. $category falls back to a
+ * generic label when the AR/AP record has no linked transaction to inherit
+ * a category from. Returns the new financial_transactions.transaction_id.
+ */
+function ais_post_ar_ap_payment(
+    PDO $pdo,
+    string $ledger,
+    int $recordId,
+    float $amount,
+    string $paymentMethod,
+    ?string $category,
+    ?int $flockId
+): int {
+    if (!in_array($ledger, ['AR', 'AP'], true)) {
+        throw new InvalidArgumentException('Invalid ledger.');
+    }
+    $transactionType = $ledger === 'AR' ? 'Income' : 'Expense';
+    $category = $category !== null && $category !== ''
+        ? $category
+        : ($ledger === 'AR' ? 'Accounts Receivable Collection' : 'Accounts Payable Settlement');
+    $description = ($ledger === 'AR' ? 'Payment received for receivable #' : 'Payment made for payable #') . $recordId;
+
+    $statement = $pdo->prepare(
+        'INSERT INTO financial_transactions
+            (transaction_date, transaction_type, category, description, amount, flock_id, payment_method, status)
+         VALUES (CURDATE(), ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $statement->execute([$transactionType, $category, $description, $amount, $flockId, $paymentMethod, 'Recorded']);
+    $transactionId = (int) $pdo->lastInsertId();
+
+    $historyStatement = $pdo->prepare(
+        'INSERT INTO ar_ap_payments (ledger, record_id, amount, payment_date, payment_method, transaction_id, recorded_by)
+         VALUES (?, ?, ?, CURDATE(), ?, ?, ?)'
+    );
+    $historyStatement->execute([$ledger, $recordId, $amount, $paymentMethod, $transactionId, current_username()]);
+
+    return $transactionId;
+}
+
 /** Formats a decimal-ish value as a fixed 2-decimal money string (no currency symbol). */
 function money(float|int|string $value): string
 {

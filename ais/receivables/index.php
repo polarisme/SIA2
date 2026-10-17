@@ -109,16 +109,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
             $invoiceNumber = $formData['invoice_number'] !== '' ? $formData['invoice_number'] : null;
             $remarks = $formData['remarks'] !== '' ? $formData['remarks'] : null;
 
+            // Carries the flock over from the linked transaction, if any, so a
+            // later payment on this receivable can post its ledger entry
+            // against the same flock.
+            $flockId = null;
+            if ($transactionId !== null) {
+                $flockLookup = $pdo->prepare('SELECT flock_id FROM financial_transactions WHERE transaction_id = ?');
+                $flockLookup->execute([$transactionId]);
+                $flockValue = $flockLookup->fetchColumn();
+                $flockId = $flockValue !== false && $flockValue !== null ? (int) $flockValue : null;
+            }
+
             if ($isEditing) {
                 $statement = $pdo->prepare(
                     'UPDATE accounts_receivable SET customer_name = :customer_name, invoice_number = :invoice_number,
-                     transaction_id = :transaction_id, invoice_date = :invoice_date, due_date = :due_date,
+                     transaction_id = :transaction_id, flock_id = :flock_id, invoice_date = :invoice_date, due_date = :due_date,
                      amount_due = :amount_due, amount_paid = :amount_paid, status = :status, remarks = :remarks
                      WHERE ar_id = :ar_id AND deleted_at IS NULL'
                 );
                 $statement->execute([
                     'customer_name' => $formData['customer_name'], 'invoice_number' => $invoiceNumber,
-                    'transaction_id' => $transactionId, 'invoice_date' => $formData['invoice_date'],
+                    'transaction_id' => $transactionId, 'flock_id' => $flockId, 'invoice_date' => $formData['invoice_date'],
                     'due_date' => $formData['due_date'], 'amount_due' => $amountDue, 'amount_paid' => $amountPaid,
                     'status' => $status, 'remarks' => $remarks, 'ar_id' => $arId,
                 ]);
@@ -129,12 +140,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
 
             $statement = $pdo->prepare(
                 'INSERT INTO accounts_receivable
-                    (customer_name, invoice_number, transaction_id, invoice_date, due_date, amount_due, amount_paid, status, remarks)
-                 VALUES (:customer_name, :invoice_number, :transaction_id, :invoice_date, :due_date, :amount_due, :amount_paid, :status, :remarks)'
+                    (customer_name, invoice_number, transaction_id, flock_id, invoice_date, due_date, amount_due, amount_paid, status, remarks)
+                 VALUES (:customer_name, :invoice_number, :transaction_id, :flock_id, :invoice_date, :due_date, :amount_due, :amount_paid, :status, :remarks)'
             );
             $statement->execute([
                 'customer_name' => $formData['customer_name'], 'invoice_number' => $invoiceNumber,
-                'transaction_id' => $transactionId, 'invoice_date' => $formData['invoice_date'],
+                'transaction_id' => $transactionId, 'flock_id' => $flockId, 'invoice_date' => $formData['invoice_date'],
                 'due_date' => $formData['due_date'], 'amount_due' => $amountDue, 'amount_paid' => $amountPaid,
                 'status' => $status, 'remarks' => $remarks,
             ]);
@@ -146,11 +157,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
     } elseif ($action === 'record_payment') {
         $arId = filter_var($_POST['ar_id'] ?? null, FILTER_VALIDATE_INT);
         $paymentAmount = ais_parse_amount((string) ($_POST['payment_amount'] ?? ''));
+        $paymentMethod = (string) ($_POST['payment_method'] ?? '');
         if ($arId === false || $arId < 1) {
             set_flash('danger', 'The selected receivable could not be found.');
             redirect_to('index.php');
         }
-        $statement = $pdo->prepare('SELECT amount_due, amount_paid, due_date FROM accounts_receivable WHERE ar_id = ? AND deleted_at IS NULL');
+        if (!in_array($paymentMethod, AIS_PAYMENT_METHODS, true)) {
+            set_flash('danger', 'Select a valid payment method.');
+            redirect_to('index.php?action=view&id=' . $arId);
+        }
+        $statement = $pdo->prepare('SELECT amount_due, amount_paid, due_date, transaction_id, flock_id FROM accounts_receivable WHERE ar_id = ? AND deleted_at IS NULL');
         $statement->execute([$arId]);
         $record = $statement->fetch();
         if (!$record) {
@@ -164,10 +180,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
         }
         $newAmountPaid = round((float) $record['amount_paid'] + $paymentAmount, 2);
         $newStatus = ar_ap_effective_status((float) $record['amount_due'], $newAmountPaid, $record['due_date']);
+
+        $category = null;
+        if ($record['transaction_id'] !== null) {
+            $categoryStatement = $pdo->prepare('SELECT category FROM financial_transactions WHERE transaction_id = ?');
+            $categoryStatement->execute([$record['transaction_id']]);
+            $category = $categoryStatement->fetchColumn() ?: null;
+        }
+
+        $pdo->beginTransaction();
         $pdo->prepare('UPDATE accounts_receivable SET amount_paid = ?, status = ? WHERE ar_id = ? AND deleted_at IS NULL')
             ->execute([$newAmountPaid, $newStatus, $arId]);
+        $postedTransactionId = ais_post_ar_ap_payment(
+            $pdo, 'AR', $arId, $paymentAmount, $paymentMethod, $category,
+            $record['flock_id'] !== null ? (int) $record['flock_id'] : null
+        );
+        $pdo->commit();
         audit_pms_action($pdo, 'UPDATE', 'accounts_receivable', $arId);
-        set_flash('success', 'Payment of ₱' . money($paymentAmount) . ' recorded.');
+        audit_pms_action($pdo, 'CREATE', 'financial_transactions', $postedTransactionId);
+        set_flash('success', 'Payment of ₱' . money($paymentAmount) . ' recorded and posted to the ledger.');
         redirect_to('index.php?action=view&id=' . $arId);
     } elseif ($action === 'delete') {
         $arId = filter_var($_POST['ar_id'] ?? null, FILTER_VALIDATE_INT);
@@ -356,17 +387,51 @@ if ($action === 'view' && $pdo instanceof PDO) {
                     <?php if ($balance <= 0): ?>
                         <p class="text-success mb-0"><i class="bi bi-check-circle" aria-hidden="true"></i> This invoice is fully paid.</p>
                     <?php else: ?>
-                        <form method="post" action="index.php?action=record_payment" class="row g-2 align-items-end" onsubmit="return confirm('Record this payment?');">
+                        <form method="post" action="index.php?action=record_payment" class="row g-2 align-items-end" onsubmit="return confirm('Record this payment? It will also post an Income transaction to the ledger.');">
                             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                             <input type="hidden" name="ar_id" value="<?= (int) $receivable['ar_id'] ?>">
                             <div class="col-8">
                                 <label class="form-label" for="payment_amount">Payment amount (₱)</label>
                                 <input class="form-control" type="number" id="payment_amount" name="payment_amount" min="0.01" max="<?= h(money($balance)) ?>" step="0.01" required>
                             </div>
-                            <div class="col-4"><button class="btn btn-primary w-100" type="submit">Apply</button></div>
+                            <div class="col-4">
+                                <label class="form-label" for="payment_method">Method</label>
+                                <select class="form-select" id="payment_method" name="payment_method" required>
+                                    <?php foreach (AIS_PAYMENT_METHODS as $methodOption): ?><option value="<?= h($methodOption) ?>"><?= h($methodOption) ?></option><?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-12"><button class="btn btn-primary w-100" type="submit">Apply</button></div>
                         </form>
                         <p class="small text-secondary mt-2 mb-0">Outstanding balance: ₱<?= money($balance) ?></p>
                     <?php endif; ?>
+                </div>
+            </section>
+            <section class="content-panel">
+                <div class="panel-heading"><h2 class="h5 mb-0">Payment history</h2></div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Ledger Tx</th><th>Recorded by</th></tr></thead>
+                        <tbody>
+                            <?php
+                            $paymentHistoryStatement = $pdo->prepare('SELECT * FROM ar_ap_payments WHERE ledger = ? AND record_id = ? ORDER BY recorded_at DESC');
+                            $paymentHistoryStatement->execute(['AR', (int) $receivable['ar_id']]);
+                            $paymentHistory = $paymentHistoryStatement->fetchAll();
+                            ?>
+                            <?php if ($paymentHistory === []): ?>
+                                <tr><td colspan="5" class="text-center text-secondary py-3">No payments recorded yet.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($paymentHistory as $payment): ?>
+                                    <tr>
+                                        <td><?= h((string) $payment['payment_date']) ?></td>
+                                        <td>₱<?= money($payment['amount']) ?></td>
+                                        <td><?= h($payment['payment_method']) ?></td>
+                                        <td><?= $payment['transaction_id'] ? '<a href="' . h(app_url('/ais/transactions/index.php')) . '?action=view&id=' . (int) $payment['transaction_id'] . '">#' . (int) $payment['transaction_id'] . '</a>' : '—' ?></td>
+                                        <td><?= h($payment['recorded_by'] ?? '—') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </div>
