@@ -93,6 +93,77 @@ function integrated_flock_financials(PDO $pdo, int $flockId): array
     ];
 }
 
+/**
+ * Scenario Analysis auto-projection (5.1a/b): scales a real flock's actual
+ * per-bird figures (eggs/bird, revenue/bird, cost/bird by category — from
+ * integrated_flock_financials() and production_records) to a proposed
+ * flock size, with optional feed-price / egg-price / mortality-rate
+ * adjustments. Purely a read + calculation; never writes to flocks,
+ * production_records, or any PMS/AIS table.
+ *
+ * Returns ['ok' => bool, 'reason' => ?string, 'current_flock_size' => int,
+ * 'projected_production' => float, 'projected_cost' => float,
+ * 'projected_revenue' => float]. ok is false (with a human-readable reason)
+ * when the base flock has no current birds or no recorded production to
+ * scale from — a scenario is never fabricated from a flock with no data.
+ */
+function integrated_scenario_projection(
+    PDO $pdo,
+    int $baseFlockId,
+    int $proposedSize,
+    float $feedPriceChangePercent,
+    float $eggPriceChangePercent,
+    float $mortalityRatePercent
+): array {
+    $flockStatement = $pdo->prepare('SELECT current_birds FROM flocks WHERE flock_id = ? AND deleted_at IS NULL');
+    $flockStatement->execute([$baseFlockId]);
+    $currentBirds = $flockStatement->fetchColumn();
+    if ($currentBirds === false) {
+        return ['ok' => false, 'reason' => 'The selected flock could not be found.', 'current_flock_size' => 0];
+    }
+    $currentBirds = (int) $currentBirds;
+    if ($currentBirds <= 0) {
+        return ['ok' => false, 'reason' => 'The selected flock has no current birds to base a projection on.', 'current_flock_size' => 0];
+    }
+
+    $eggsStatement = $pdo->prepare(
+        'SELECT COALESCE(SUM(eggs_produced), 0) FROM production_records WHERE flock_id = ? AND deleted_at IS NULL'
+    );
+    $eggsStatement->execute([$baseFlockId]);
+    $totalEggs = (float) $eggsStatement->fetchColumn();
+
+    $financials = integrated_flock_financials($pdo, $baseFlockId);
+    if ($totalEggs <= 0 && !$financials['has_data']) {
+        return [
+            'ok' => false,
+            'reason' => 'The selected flock has no recorded production or financial history to project from.',
+            'current_flock_size' => $currentBirds,
+        ];
+    }
+
+    $effectiveBirds = $proposedSize * max(0.0, 1 - $mortalityRatePercent / 100);
+    $eggsPerBird = $totalEggs / $currentBirds;
+    $revenuePerBird = $financials['revenue'] / $currentBirds;
+
+    $projectedCost = 0.0;
+    foreach ($financials['cost_by_category'] as $category => $amount) {
+        $perBird = $amount / $currentBirds;
+        $priceMultiplier = $category === 'Feed' ? (1 + $feedPriceChangePercent / 100) : 1.0;
+        $projectedCost += $perBird * $effectiveBirds * $priceMultiplier;
+    }
+    $projectedProduction = $eggsPerBird * $effectiveBirds;
+    $projectedRevenue = $revenuePerBird * $effectiveBirds * (1 + $eggPriceChangePercent / 100);
+
+    return [
+        'ok' => true,
+        'reason' => null,
+        'current_flock_size' => $currentBirds,
+        'projected_production' => round(max(0.0, $projectedProduction), 2),
+        'projected_cost' => round(max(0.0, $projectedCost), 2),
+        'projected_revenue' => round(max(0.0, $projectedRevenue), 2),
+    ];
+}
+
 /** Recalculates and upserts the batch_profitability cache row for one flock. Returns the fresh figures. */
 function integrated_recalculate_batch_profitability(PDO $pdo, int $flockId): array
 {

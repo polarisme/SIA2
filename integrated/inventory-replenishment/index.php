@@ -113,12 +113,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
 
 $items = [];
 $analyses = [];
+$cashPosition = 0.0;
 if ($pdo instanceof PDO) {
     try {
         $items = $pdo->query(
-            "SELECT item_id, item_code, item_name, category, quantity, reorder_level, unit_cost, status
-             FROM poultry_inventory WHERE deleted_at IS NULL ORDER BY status = 'Out of Stock' DESC, status = 'Low Stock' DESC, item_name"
+            "SELECT i.item_id, i.item_code, i.item_name, i.category, i.quantity, i.reorder_level, i.unit_cost, i.status,
+                    COALESCE((
+                        SELECT SUM(a.quantity) FROM inventory_adjustments a
+                        WHERE a.item_id = i.item_id AND a.direction = 'Reduce' AND a.adjusted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    ), 0) / 30 AS avg_daily_reduction
+             FROM poultry_inventory i WHERE i.deleted_at IS NULL
+             ORDER BY i.status = 'Out of Stock' DESC, i.status = 'Low Stock' DESC, i.item_name"
         )->fetchAll();
+
+        // Same cash-position formula as the Statement of Financial Position (4.2b):
+        // net of all non-cancelled transactions to date. Shown as a suggested
+        // budget only — the field stays editable.
+        $cashPosition = (float) $pdo->query(
+            "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE -amount END), 0)
+             FROM financial_transactions WHERE status <> 'Cancelled' AND deleted_at IS NULL"
+        )->fetchColumn();
 
         $analyses = $pdo->query(
             "SELECT r.*, i.item_code, i.item_name, i.category, i.quantity AS live_quantity, i.reorder_level AS live_reorder_level
@@ -146,39 +160,57 @@ require __DIR__ . '/../../shared/includes/header.php';
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">New Replenishment Analysis</h2></div>
     <div class="panel-body">
-        <p class="small text-secondary">Current stock and reorder level come live from Inventory Management. Expected demand and available budget are figures you enter — clearly your own projection, not a system-derived value.</p>
-        <form method="post" action="index.php?action=create" class="row g-2 align-items-end">
+        <p class="small text-secondary">Current stock and reorder level come live from Inventory Management. Expected demand and available budget are pre-filled as suggestions — from the item's recent usage and the current AIS cash position — but remain fully editable; they are not forced system values.</p>
+        <form method="post" action="index.php?action=create" class="row g-2 align-items-end" id="replenishment-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <div class="col-md-3">
                 <label class="form-label" for="item_id">Inventory item</label>
-                <select class="form-select" id="item_id" name="item_id" required onchange="var o=this.options[this.selectedIndex]; document.getElementById('unit_price').value=o.dataset.unitCost||'';">
+                <select class="form-select" id="item_id" name="item_id" required onchange="updateReplenishmentSuggestions();">
                     <option value="">Select item</option>
                     <?php foreach ($items as $item): ?>
-                        <option value="<?= (int) $item['item_id'] ?>" data-unit-cost="<?= h($item['unit_cost']) ?>">
+                        <option value="<?= (int) $item['item_id'] ?>" data-unit-cost="<?= h($item['unit_cost']) ?>" data-avg-daily-reduction="<?= h((string) $item['avg_daily_reduction']) ?>">
                             <?= h($item['item_code']) ?> — <?= h($item['item_name']) ?> (stock: <?= number_format((float) $item['quantity'], 2) ?>, reorder: <?= number_format((float) $item['reorder_level'], 2) ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label" for="expected_demand">Expected demand <span class="text-danger">*</span></label>
-                <input class="form-control" type="number" id="expected_demand" name="expected_demand" min="0" step="0.01" required>
+                <label class="form-label" for="days_to_cover">Days to cover</label>
+                <input class="form-control" type="number" id="days_to_cover" name="days_to_cover" min="1" step="1" value="30" onchange="updateReplenishmentSuggestions();">
             </div>
             <div class="col-md-2">
-                <label class="form-label" for="unit_price">Unit price (₱)</label>
+                <label class="form-label" for="expected_demand">Expected demand <span class="text-danger">*</span></label>
+                <input class="form-control" type="number" id="expected_demand" name="expected_demand" min="0" step="0.01" required>
+                <div class="form-text">Suggested: avg. daily usage (30 days) &times; days to cover.</div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="unit_price">Supplier unit price (₱)</label>
                 <input class="form-control" type="number" id="unit_price" name="unit_price" min="0" step="0.01" required>
             </div>
             <div class="col-md-2">
                 <label class="form-label" for="available_budget">Available budget (₱) <span class="text-danger">*</span></label>
-                <input class="form-control" type="number" id="available_budget" name="available_budget" min="0" step="0.01" required>
+                <input class="form-control" type="number" id="available_budget" name="available_budget" min="0" step="0.01" required value="<?= h(number_format(max(0.0, $cashPosition), 2, '.', '')) ?>">
+                <div class="form-text">Suggested: current AIS cash position.</div>
             </div>
-            <div class="col-md-3"><button class="btn btn-primary w-100" type="submit">Calculate &amp; Save Analysis</button></div>
+            <div class="col-md-1"><button class="btn btn-primary w-100" type="submit">Save</button></div>
         </form>
         <p class="small text-secondary mt-2 mb-0">
-            Rule used: <strong>Recommended Quantity = max(0, Expected Demand + Reorder Level − Current Stock)</strong>; Estimated Cost = Recommended Quantity &times; Unit Price.
+            Rule used: <strong>Recommended Quantity = max(0, Expected Demand + Reorder Level − Current Stock)</strong>; Estimated Cost = Recommended Quantity &times; Supplier Unit Price.
             Status is <strong>Sufficient Stock</strong> when current stock already covers demand and the reorder buffer; <strong>High Priority Replenishment</strong> when stock is at/near zero or well below reorder level;
             <strong>Insufficient Budget</strong> when the estimated cost exceeds your stated budget; otherwise <strong>Replenishment Recommended</strong>.
         </p>
+        <script>
+            function updateReplenishmentSuggestions() {
+                var select = document.getElementById('item_id');
+                var option = select.options[select.selectedIndex];
+                if (!option || !option.value) { return; }
+                var unitCost = parseFloat(option.dataset.unitCost || '0');
+                var avgDailyReduction = parseFloat(option.dataset.avgDailyReduction || '0');
+                var daysToCover = parseFloat(document.getElementById('days_to_cover').value || '30');
+                document.getElementById('unit_price').value = unitCost.toFixed(2);
+                document.getElementById('expected_demand').value = (avgDailyReduction * daysToCover).toFixed(2);
+            }
+        </script>
     </div>
 </section>
 

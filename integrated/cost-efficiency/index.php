@@ -20,22 +20,31 @@ try {
 }
 
 $flockRows = [];
-$categoryAverages = [];
+$categoryValuesByFlock = [];
 if ($pdo instanceof PDO) {
     try {
         $flocks = $pdo->query('SELECT flock_id, batch_code, breed, status, current_birds FROM flocks WHERE deleted_at IS NULL ORDER BY status, batch_code')->fetchAll();
 
         $eggsStatement = $pdo->prepare('SELECT COALESCE(SUM(eggs_produced), 0) FROM production_records WHERE flock_id = ? AND deleted_at IS NULL');
+        $activitiesStatement = $pdo->prepare(
+            "SELECT COUNT(*) FROM farm_activities WHERE flock_id = ? AND status = 'Completed' AND deleted_at IS NULL"
+        );
+        $healthIncidentsStatement = $pdo->prepare('SELECT COUNT(*) FROM health_records WHERE flock_id = ? AND deleted_at IS NULL');
 
-        // First pass: gather each flock's cost-by-category and production, and accumulate
-        // per-category totals so a per-flock "cost per bird" can be compared against the
-        // average of every OTHER flock that has data for that category.
-        $perFlockCategoryCostPerBird = [];
+        // First pass: gather each flock's cost-by-category and production. Values are
+        // kept PER FLOCK (not pre-averaged) so that each flock's own comparison, below,
+        // can exclude itself from the average of every OTHER flock with data in that
+        // category — matching this page's own tooltip/caption text.
+        $categoryValuesByFlock = [];
         foreach ($flocks as $flock) {
             $flockId = (int) $flock['flock_id'];
             $financials = integrated_flock_financials($pdo, $flockId);
             $eggsStatement->execute([$flockId]);
             $eggs = (int) $eggsStatement->fetchColumn();
+            $activitiesStatement->execute([$flockId]);
+            $activitiesCompleted = (int) $activitiesStatement->fetchColumn();
+            $healthIncidentsStatement->execute([$flockId]);
+            $healthIncidents = (int) $healthIncidentsStatement->fetchColumn();
             $birds = max(1, (int) $flock['current_birds']); // avoid division by zero; birds=0 flocks are flagged separately below
 
             $costPerBirdByCategory = [];
@@ -44,7 +53,7 @@ if ($pdo instanceof PDO) {
                 if ($categoryCost > 0 && (int) $flock['current_birds'] > 0) {
                     $perBird = $categoryCost / $birds;
                     $costPerBirdByCategory[$category] = $perBird;
-                    $categoryAverages[$category][] = $perBird;
+                    $categoryValuesByFlock[$category][$flockId] = $perBird;
                 }
             }
 
@@ -52,14 +61,12 @@ if ($pdo instanceof PDO) {
                 'flock' => $flock,
                 'financials' => $financials,
                 'eggs' => $eggs,
+                'activities_completed' => $activitiesCompleted,
+                'health_incidents' => $healthIncidents,
                 'cost_per_bird_total' => (int) $flock['current_birds'] > 0 ? $financials['total_cost'] / $birds : null,
                 'cost_per_100_eggs' => $eggs > 0 ? ($financials['total_cost'] / $eggs) * 100 : null,
                 'cost_per_bird_by_category' => $costPerBirdByCategory,
             ];
-        }
-
-        foreach ($categoryAverages as $category => $values) {
-            $categoryAverages[$category] = array_sum($values) / count($values);
         }
     } catch (PDOException $exception) {
         error_log('Integrated cost efficiency query failed: ' . $exception->getMessage());
@@ -81,10 +88,10 @@ require __DIR__ . '/../../shared/includes/header.php';
     <div class="panel-heading"><h2 class="h5 mb-0">Cost per Batch</h2></div>
     <div class="table-responsive">
         <table class="table table-hover mb-0">
-            <thead><tr><th>Batch</th><th class="text-end">Current Birds</th><th class="text-end">Total Cost</th><th class="text-end">Cost per Bird</th><th class="text-end">Eggs Produced</th><th class="text-end">Cost per 100 Eggs</th></tr></thead>
+            <thead><tr><th>Batch</th><th class="text-end">Current Birds</th><th class="text-end">Total Cost</th><th class="text-end">Cost per Bird</th><th class="text-end">Eggs Produced</th><th class="text-end">Cost per 100 Eggs</th><th class="text-end">Activities Completed</th><th class="text-end">Health Incidents</th></tr></thead>
             <tbody>
                 <?php if ($flockRows === []): ?>
-                    <tr><td colspan="6" class="text-center text-secondary py-4">No flocks found.</td></tr>
+                    <tr><td colspan="8" class="text-center text-secondary py-4">No flocks found.</td></tr>
                 <?php else: ?>
                     <?php foreach ($flockRows as $row): ?>
                         <tr>
@@ -94,6 +101,8 @@ require __DIR__ . '/../../shared/includes/header.php';
                             <td class="text-end"><?= $row['cost_per_bird_total'] === null ? '—' : '₱' . money($row['cost_per_bird_total']) ?></td>
                             <td class="text-end"><?= number_format($row['eggs']) ?></td>
                             <td class="text-end"><?= $row['cost_per_100_eggs'] === null ? '—' : '₱' . money($row['cost_per_100_eggs']) ?></td>
+                            <td class="text-end"><?= number_format($row['activities_completed']) ?></td>
+                            <td class="text-end"><?= number_format($row['health_incidents']) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -116,9 +125,14 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <td><?= h($row['flock']['batch_code']) ?></td>
                         <?php foreach (INTEGRATED_COST_CATEGORIES as $category): ?>
                             <?php
+                            $flockId = (int) $row['flock']['flock_id'];
                             $value = $row['cost_per_bird_by_category'][$category] ?? null;
-                            $average = $categoryAverages[$category] ?? null;
-                            $sampleSize = isset($categoryAverages[$category]) ? count(array_filter($flockRows, static fn ($r) => isset($r['cost_per_bird_by_category'][$category]))) : 0;
+                            // Average of every OTHER flock with data in this category — the flock
+                            // being displayed is excluded from its own comparison average.
+                            $othersInCategory = $categoryValuesByFlock[$category] ?? [];
+                            unset($othersInCategory[$flockId]);
+                            $sampleSize = count($othersInCategory);
+                            $average = $sampleSize > 0 ? array_sum($othersInCategory) / $sampleSize : null;
                             $isAboveAverage = $value !== null && $average !== null && $sampleSize >= 2 && $value > $average * 1.5;
                             ?>
                             <td class="text-end">
