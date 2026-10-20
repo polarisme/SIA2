@@ -143,6 +143,12 @@ $correlations = [
     'Cost vs Profit' => pearson_correlation($costSeries, $profitSeries),
 ];
 
+// Correlations and the comparison tables above/below always use the FULL $flockRows —
+// only the "Batch Profitability" table's display is paginated.
+$batchProfitabilityTotal = count($flockRows);
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+$flockRowsPage = array_slice($flockRows, $offset, $perPage);
+
 $pageBodyClass = 'page-performance';
 $printReportTitle = 'YIELD — Production & Financial Performance Report';
 require __DIR__ . '/../../shared/includes/header.php';
@@ -238,7 +244,7 @@ require __DIR__ . '/../../shared/includes/header.php';
         <table class="table table-sm mb-0">
             <thead><tr><th>Batch</th><th class="text-end">Birds</th><th class="text-end">Eggs</th><th class="text-end">Mortality</th><th class="text-end">Revenue</th><th class="text-end">Cost</th><th class="text-end">Gross Profit</th></tr></thead>
             <tbody>
-                <?php foreach ($flockRows as $row): ?>
+                <?php foreach ($flockRowsPage as $row): ?>
                     <tr>
                         <td><?= h($row['flock']['batch_code']) ?></td>
                         <td class="text-end"><?= number_format((int) $row['flock']['current_birds']) ?></td>
@@ -252,6 +258,7 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $batchProfitabilityTotal, $_GET, 'index.php'); ?>
 </section>
 
 <section class="content-panel">

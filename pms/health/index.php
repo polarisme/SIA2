@@ -346,13 +346,17 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
             if ($summaryData) {
                 $stats = $summaryData;
             }
+            $totalRecords = (int) $stats['total_records'];
+
+            ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 
             $recordQuery = $pdo->prepare(
                 'SELECT h.health_id, h.record_date, h.flock_id, f.batch_code, h.record_type,
                         h.description, h.affected_birds, h.medicine_or_vaccine, h.quantity_used,
                         h.unit, h.action_taken, h.status, h.remarks
                  FROM health_records h JOIN flocks f ON f.flock_id = h.flock_id' . $whereSql . '
-                 ORDER BY h.record_date DESC, h.health_id DESC'
+                 ORDER BY h.record_date DESC, h.health_id DESC
+                 LIMIT ' . $perPage . ' OFFSET ' . $offset
             );
             $recordQuery->execute($parameters);
             $records = $recordQuery->fetchAll();
@@ -506,29 +510,67 @@ require __DIR__ . '/../../shared/includes/header.php';
     <?php endif; ?>
 
     <section class="content-panel">
-        <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Health records</h2><span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span></div>
+        <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Health records</h2><span class="text-secondary small"><?= number_format($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span></div>
         <div class="panel-body border-bottom">
             <form method="get" action="index.php" class="row g-2 align-items-end">
+                <?php pagination_preserve_per_page_field($perPage); ?>
                 <div class="col-md-2"><label class="form-label" for="filter_type">Record type</label><select class="form-select" id="filter_type" name="record_type"><option value="">All types</option><?php foreach (HEALTH_RECORD_TYPES as $type): ?><option value="<?= h($type) ?>" <?= $filters['record_type'] === $type ? 'selected' : '' ?>><?= h($type) ?></option><?php endforeach; ?></select></div>
                 <div class="col-md-2"><label class="form-label" for="filter_status">Status</label><select class="form-select" id="filter_status" name="status"><option value="">All statuses</option><?php foreach (HEALTH_STATUSES as $status): ?><option value="<?= h($status) ?>" <?= $filters['status'] === $status ? 'selected' : '' ?>><?= h($status) ?></option><?php endforeach; ?></select></div>
                 <div class="col-md-2"><label class="form-label" for="filter_flock">Flock / batch</label><select class="form-select" id="filter_flock" name="flock_id"><option value="">All flocks</option><?php foreach ($flocks as $flock): ?><option value="<?= (int) $flock['flock_id'] ?>" <?= $filters['flock_id'] === (string) $flock['flock_id'] ? 'selected' : '' ?>><?= h($flock['batch_code']) ?></option><?php endforeach; ?></select></div>
                 <div class="col-md-2"><label class="form-label" for="filter_date">Record date</label><input class="form-control" type="date" id="filter_date" name="record_date" value="<?= h($filters['record_date']) ?>"></div>
                 <div class="col-md-2"><label class="form-label" for="health_search">Search</label><input class="form-control" id="health_search" name="search" value="<?= h($filters['search']) ?>" placeholder="Search health records"></div>
-                <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button><a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a></div>
+                <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button><a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a></div>
             </form>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead><tr><th scope="col">Health Record ID</th><th scope="col">Date</th><th scope="col">Flock / Batch Code</th><th scope="col">Record Type</th><th scope="col">Description</th><th scope="col" class="text-end">Affected Birds</th><th scope="col">Medicine / Vaccine</th><th scope="col" class="text-end">Quantity Used</th><th scope="col">Unit</th><th scope="col">Action Taken</th><th scope="col">Status</th><th scope="col">Remarks</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 6%"><col style="width: 9%"><col style="width: 11%"><col style="width: 9%">
+                    <col style="width: 23%"><col style="width: 7%"><col style="width: 13%"><col style="width: 8%"><col style="width: 14%">
+                </colgroup>
+                <thead><tr><th scope="col">ID</th><th scope="col">Date</th><th scope="col">Flock</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="text-end">Affected</th><th scope="col">Medicine/Vaccine</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
-                    <?php if ($records === []): ?><tr><td colspan="13" class="text-center text-secondary py-5">No health records match these filters.</td></tr>
-                    <?php else: foreach ($records as $healthRow): ?><tr>
-                        <td><?= (int) $healthRow['health_id'] ?></td><td><?= h($healthRow['record_date']) ?></td><td class="fw-semibold"><?= h($healthRow['batch_code']) ?></td><td><?= h($healthRow['record_type']) ?></td><td><?= h($healthRow['description'] ?? '') ?></td><td class="text-end"><?= number_format((int) $healthRow['affected_birds']) ?></td><td><?= h($healthRow['medicine_or_vaccine'] ?? '') ?></td><td class="text-end"><?= number_format((float) $healthRow['quantity_used'], 2) ?></td><td><?= h($healthRow['unit'] ?? '') ?></td><td><?= h($healthRow['action_taken'] ?? '') ?></td><td><span class="badge text-bg-<?= h(health_status_badge($healthRow['status'])) ?>"><?= h($healthRow['status']) ?></span></td><td><?= h($healthRow['remarks'] ?? '') ?></td>
-                        <td class="text-end text-nowrap"><?php if ($canManage): ?><a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $healthRow['health_id'] ?>">Edit</a><form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this health record to the Recycle Bin?\nType: <?= h($healthRow['record_type']) ?>\nBatch: <?= h($healthRow['batch_code']) ?>\nThis record can be restored later.');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="health_id" value="<?= (int) $healthRow['health_id'] ?>"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form><?php else: ?><span class="text-secondary">Read only</span><?php endif; ?></td>
-                    </tr><?php endforeach; endif; ?>
+                    <?php if ($records === []): ?><tr><td colspan="9" class="text-center text-secondary py-5">No health records match these filters.</td></tr>
+                    <?php else: foreach ($records as $healthRow): ?>
+                    <tr>
+                        <td><?= (int) $healthRow['health_id'] ?></td>
+                        <td><span class="cell-id" title="<?= h($healthRow['record_date']) ?>"><?= h($healthRow['record_date']) ?></span></td>
+                        <td class="fw-semibold"><span class="cell-id" title="<?= h($healthRow['batch_code']) ?>"><?= h($healthRow['batch_code']) ?></span></td>
+                        <td class="cell-wrap"><?= h($healthRow['record_type']) ?></td>
+                        <td class="cell-clamp" title="<?= h($healthRow['description'] ?? '') ?>"><?= h($healthRow['description'] ?? '') ?></td>
+                        <td class="text-end"><?= number_format((int) $healthRow['affected_birds']) ?></td>
+                        <td class="cell-clamp" title="<?= h($healthRow['medicine_or_vaccine'] ?? '') ?>"><?= h($healthRow['medicine_or_vaccine'] ?? '') ?></td>
+                        <td><span class="badge text-bg-<?= h(health_status_badge($healthRow['status'])) ?>"><?= h($healthRow['status']) ?></span></td>
+                        <td class="text-end table-detail-toggle">
+                            <div class="action-cell">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#health-detail-<?= (int) $healthRow['health_id'] ?>" aria-expanded="false" aria-label="Show more detail for health record <?= (int) $healthRow['health_id'] ?>" title="More detail">
+                                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                </button>
+                                <?php if ($canManage): ?>
+                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $healthRow['health_id'] ?>" aria-label="Edit health record <?= (int) $healthRow['health_id'] ?>" title="Edit"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                                    <form method="post" action="index.php?action=delete" onsubmit="return confirm('Move this health record to the Recycle Bin?\nType: <?= h($healthRow['record_type']) ?>\nBatch: <?= h($healthRow['batch_code']) ?>\nThis record can be restored later.');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="health_id" value="<?= (int) $healthRow['health_id'] ?>">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete health record <?= (int) $healthRow['health_id'] ?>" title="Delete"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="collapse table-detail-row" id="health-detail-<?= (int) $healthRow['health_id'] ?>">
+                        <td colspan="9">
+                            <div class="table-detail-body row g-3">
+                                <div class="col-sm-3"><div class="detail-label">Quantity Used</div><div class="detail-value"><?= number_format((float) $healthRow['quantity_used'], 2) ?> <?= h($healthRow['unit'] ?? '') ?></div></div>
+                                <div class="col-sm-4"><div class="detail-label">Action Taken</div><div class="detail-value"><?= h($healthRow['action_taken'] ?? '—') ?></div></div>
+                                <div class="col-sm-5"><div class="detail-label">Remarks</div><div class="detail-value"><?= h($healthRow['remarks'] ?? '—') ?></div></div>
+                                <?php if (!$canManage): ?><div class="col-12 text-secondary small">Read-only access.</div><?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; endif; ?>
                 </tbody>
             </table>
         </div>
+        <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
     </section>
 <?php endif; ?>
 

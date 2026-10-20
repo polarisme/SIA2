@@ -332,11 +332,20 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
             $initialBirds = (int) ($mortalityData['initial_birds'] ?? 0);
             $stats['mortality_rate'] = $initialBirds > 0 ? (int) ($mortalityData['mortality_count'] ?? 0) / $initialBirds * 100 : null;
 
+            $totalCountStatement = $pdo->prepare(
+                'SELECT COUNT(*) FROM production_records p JOIN flocks f ON f.flock_id = p.flock_id' . $whereSql
+            );
+            $totalCountStatement->execute($parameters);
+            $totalRecords = (int) $totalCountStatement->fetchColumn();
+
+            ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
             $recordsSql = 'SELECT p.production_id, p.flock_id, f.batch_code, p.record_date,
                                   p.eggs_produced, p.good_eggs, p.damaged_eggs, p.sample_size,
                                   p.average_weight, p.mortality_count, p.remarks
                            FROM production_records p JOIN flocks f ON f.flock_id = p.flock_id' . $whereSql . '
-                           ORDER BY p.record_date DESC, p.production_id DESC';
+                           ORDER BY p.record_date DESC, p.production_id DESC
+                           LIMIT ' . $perPage . ' OFFSET ' . $offset;
             $recordQuery = $pdo->prepare($recordsSql);
             $recordQuery->execute($parameters);
             $records = $recordQuery->fetchAll();
@@ -348,6 +357,9 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
             $flockQuery = $pdo->prepare($byFlockSql);
             $flockQuery->execute($parameters);
             $flockTotals = $flockQuery->fetchAll();
+            ['page' => $flockPageNum, 'per_page' => $flockPerPage, 'offset' => $flockOffset] = paginate_params('flock_');
+            $flockTotalsCount = count($flockTotals);
+            $flockTotalsPage = array_slice($flockTotals, $flockOffset, $flockPerPage);
         }
     } catch (PDOException $exception) {
         error_log('Production dashboard query failed: ' . $exception->getMessage());
@@ -449,40 +461,78 @@ require __DIR__ . '/../../shared/includes/header.php';
     <section class="content-panel mb-4">
         <div class="panel-heading"><h2 class="h5 mb-0">Production by flock / batch</h2></div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 40%"><col style="width: 20%"><col style="width: 20%"><col style="width: 20%">
+                </colgroup>
                 <thead><tr><th scope="col">Flock / Batch Code</th><th scope="col" class="text-end">Eggs Produced</th><th scope="col" class="text-end">Good Eggs</th><th scope="col" class="text-end">Damaged Eggs</th></tr></thead>
                 <tbody>
-                    <?php if ($flockTotals === []): ?><tr><td colspan="4" class="text-center text-secondary py-4">No production totals to display.</td></tr>
-                    <?php else: foreach ($flockTotals as $flockTotal): ?><tr><td><?= h($flockTotal['batch_code']) ?></td><td class="text-end"><?= number_format((int) $flockTotal['eggs_produced']) ?></td><td class="text-end"><?= number_format((int) $flockTotal['good_eggs']) ?></td><td class="text-end"><?= number_format((int) $flockTotal['damaged_eggs']) ?></td></tr><?php endforeach; endif; ?>
+                    <?php if ($flockTotalsPage === []): ?><tr><td colspan="4" class="text-center text-secondary py-4">No production totals to display.</td></tr>
+                    <?php else: foreach ($flockTotalsPage as $flockTotal): ?><tr><td class="fw-semibold"><span class="cell-id" title="<?= h($flockTotal['batch_code']) ?>"><?= h($flockTotal['batch_code']) ?></span></td><td class="text-end"><?= number_format((int) $flockTotal['eggs_produced']) ?></td><td class="text-end"><?= number_format((int) $flockTotal['good_eggs']) ?></td><td class="text-end"><?= number_format((int) $flockTotal['damaged_eggs']) ?></td></tr><?php endforeach; endif; ?>
                 </tbody>
             </table>
         </div>
+        <?php render_pagination_controls($flockPageNum, $flockPerPage, $flockTotalsCount, $_GET, 'index.php', 'flock_'); ?>
     </section>
 
     <section class="content-panel">
-        <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Production records</h2><span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span></div>
+        <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Production records</h2><span class="text-secondary small"><?= number_format($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span></div>
         <div class="panel-body border-bottom">
             <form method="get" action="index.php" class="row g-2 align-items-end">
+                <?php pagination_preserve_per_page_field($perPage); ?>
                 <div class="col-md-2"><label class="form-label" for="date_from">Date from</label><input class="form-control" type="date" id="date_from" name="date_from" value="<?= h($filters['date_from']) ?>"></div>
                 <div class="col-md-2"><label class="form-label" for="date_to">Date to</label><input class="form-control" type="date" id="date_to" name="date_to" value="<?= h($filters['date_to']) ?>"></div>
                 <div class="col-md-3"><label class="form-label" for="flock_filter">Flock / batch</label><select class="form-select" id="flock_filter" name="flock_id"><option value="">All flocks</option><?php foreach ($flocks as $flock): ?><option value="<?= (int) $flock['flock_id'] ?>" <?= $filters['flock_id'] === (string) $flock['flock_id'] ? 'selected' : '' ?>><?= h($flock['batch_code']) ?></option><?php endforeach; ?></select></div>
                 <div class="col-md-3"><label class="form-label" for="production_search">Search batch / remarks</label><input class="form-control" id="production_search" name="search" value="<?= h($filters['search']) ?>" placeholder="Search records"></div>
-                <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button><a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a></div>
+                <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button><a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a></div>
             </form>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead><tr><th scope="col">Record Date</th><th scope="col">Flock / Batch Code</th><th scope="col" class="text-end">Eggs Produced</th><th scope="col" class="text-end">Good Eggs</th><th scope="col" class="text-end">Damaged Eggs</th><th scope="col" class="text-end">Sample Size</th><th scope="col" class="text-end">Average Weight</th><th scope="col" class="text-end">Mortality Count</th><th scope="col">Remarks</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 5%"><col style="width: 11%"><col style="width: 14%"><col style="width: 12%">
+                    <col style="width: 16%"><col style="width: 11%"><col style="width: 11%"><col style="width: 20%">
+                </colgroup>
+                <thead><tr><th scope="col">ID</th><th scope="col">Record Date</th><th scope="col">Flock / Batch Code</th><th scope="col" class="text-end">Eggs Produced</th><th scope="col" class="text-end">Good / Damaged</th><th scope="col" class="text-end">Mortality</th><th scope="col" class="text-end">Avg Weight</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
-                    <?php if ($records === []): ?><tr><td colspan="10" class="text-center text-secondary py-5">No production records match these filters.</td></tr>
+                    <?php if ($records === []): ?><tr><td colspan="8" class="text-center text-secondary py-5">No production records match these filters.</td></tr>
                     <?php else: foreach ($records as $productionRecord): ?><tr>
-                        <td><?= h($productionRecord['record_date']) ?></td><td class="fw-semibold"><?= h($productionRecord['batch_code']) ?></td>
-                        <td class="text-end"><?= number_format((int) $productionRecord['eggs_produced']) ?></td><td class="text-end"><?= number_format((int) $productionRecord['good_eggs']) ?></td><td class="text-end"><?= number_format((int) $productionRecord['damaged_eggs']) ?></td><td class="text-end"><?= number_format((int) $productionRecord['sample_size']) ?></td><td class="text-end"><?= number_format((float) $productionRecord['average_weight'], 2) ?></td><td class="text-end"><?= number_format((int) $productionRecord['mortality_count']) ?></td><td><?= h($productionRecord['remarks'] ?? '') ?></td>
-                        <td class="text-end text-nowrap"><?php if ($canManage): ?><a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $productionRecord['production_id'] ?>">Edit</a><form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this production record to the Recycle Bin?\nBatch: <?= h($productionRecord['batch_code']) ?>\nDate: <?= h($productionRecord['record_date']) ?>\nThis record can be restored later.');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="production_id" value="<?= (int) $productionRecord['production_id'] ?>"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form><?php else: ?><span class="text-secondary">Read only</span><?php endif; ?></td>
-                    </tr><?php endforeach; endif; ?>
+                        <td><?= (int) $productionRecord['production_id'] ?></td>
+                        <td><span class="cell-id" title="<?= h($productionRecord['record_date']) ?>"><?= h($productionRecord['record_date']) ?></span></td>
+                        <td class="fw-semibold"><span class="cell-id" title="<?= h($productionRecord['batch_code']) ?>"><?= h($productionRecord['batch_code']) ?></span></td>
+                        <td class="text-end"><?= number_format((int) $productionRecord['eggs_produced']) ?></td>
+                        <td class="text-end cell-wrap"><?= number_format((int) $productionRecord['good_eggs']) ?> / <?= number_format((int) $productionRecord['damaged_eggs']) ?></td>
+                        <td class="text-end"><?= number_format((int) $productionRecord['mortality_count']) ?></td>
+                        <td class="text-end"><?= number_format((float) $productionRecord['average_weight'], 2) ?></td>
+                        <td class="text-end table-detail-toggle">
+                            <div class="d-flex flex-wrap justify-content-end gap-1">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#production-detail-<?= (int) $productionRecord['production_id'] ?>" aria-expanded="false" aria-label="Show more detail for production record <?= (int) $productionRecord['production_id'] ?>">
+                                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                </button>
+                                <?php if ($canManage): ?>
+                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $productionRecord['production_id'] ?>">Edit</a>
+                                    <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this production record to the Recycle Bin?\nBatch: <?= h($productionRecord['batch_code']) ?>\nDate: <?= h($productionRecord['record_date']) ?>\nThis record can be restored later.');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="production_id" value="<?= (int) $productionRecord['production_id'] ?>"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                                    </form>
+                                <?php else: ?>
+                                    <span class="text-secondary">Read only</span>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="collapse table-detail-row" id="production-detail-<?= (int) $productionRecord['production_id'] ?>">
+                        <td colspan="8">
+                            <div class="table-detail-body row g-3">
+                                <div class="col-sm-3"><div class="detail-label">Sample Size</div><div class="detail-value"><?= number_format((int) $productionRecord['sample_size']) ?></div></div>
+                                <div class="col-sm-9"><div class="detail-label">Remarks</div><div class="detail-value"><?= $productionRecord['remarks'] !== null && $productionRecord['remarks'] !== '' ? nl2br(h($productionRecord['remarks'])) : '—' ?></div></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; endif; ?>
                 </tbody>
             </table>
         </div>
+        <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
     </section>
 <?php endif; ?>
 

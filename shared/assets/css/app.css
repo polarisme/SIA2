@@ -77,14 +77,65 @@
     table-layout: fixed;
 }
 
+/* Explanatory text (why a recommendation was made) reads as secondary
+   detail, not a value of equal weight to the item name, quantities, or
+   status badge above it. */
 .page-replenishment .replenishment-reason {
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: .875rem;
+    color: var(--muted);
+    line-height: 1.45;
 }
 
 .page-replenishment .replenishment-card .replenishment-reason {
     font-size: .875rem;
+}
+
+.page-replenishment .replenishment-table > tbody > tr > td {
+    vertical-align: top;
+}
+
+/* =========================================================================
+   Replenishment status accent — a deliberately bright 6px strip at the row's
+   far-left edge only. On the table, this is painted as an INSET box-shadow
+   on the row's first cell rather than a border-left: box-shadow never adds
+   to the element's box width, so the column stays exactly as wide as its
+   <col> declares and the header above it never shifts out of alignment.
+   Top/right/bottom edges are untouched — they keep the table's normal thin,
+   neutral row dividers. On the mobile card (a plain block element, not a
+   table cell) a real border-left is simplest and has no such side effect.
+   ========================================================================= */
+.page-replenishment .replenishment-table > tbody > tr.replenishment-row--urgent > td:first-child {
+    box-shadow: inset 6px 0 0 0 #DC3545;
+}
+
+.page-replenishment .replenishment-table > tbody > tr.replenishment-row--warning > td:first-child {
+    box-shadow: inset 6px 0 0 0 #FFB800;
+}
+
+.page-replenishment .replenishment-table > tbody > tr.replenishment-row--recommended > td:first-child {
+    box-shadow: inset 6px 0 0 0 #0D6EFD;
+}
+
+.page-replenishment .replenishment-table > tbody > tr.replenishment-row--sufficient > td:first-child {
+    box-shadow: inset 6px 0 0 0 #168B50;
+}
+
+.page-replenishment .replenishment-card.replenishment-row--urgent {
+    border-left: 6px solid #DC3545;
+}
+
+.page-replenishment .replenishment-card.replenishment-row--warning {
+    border-left: 6px solid #FFB800;
+}
+
+.page-replenishment .replenishment-card.replenishment-row--recommended {
+    border-left: 6px solid #0D6EFD;
+}
+
+.page-replenishment .replenishment-card.replenishment-row--sufficient {
+    border-left: 6px solid #168B50;
 }
 
 /* =========================================================================
@@ -531,18 +582,19 @@ body {
 }
 
 .page-heading {
-    margin-bottom: 1.5rem;
+    margin-bottom: .9rem;
 }
 
 .page-heading h1 {
-    margin: .25rem 0 .35rem;
-    font-size: 1.9rem;
+    margin: .15rem 0 .25rem;
+    font-size: 1.55rem;
     font-weight: 700;
 }
 
 .page-heading p {
     margin: 0;
     color: var(--muted);
+    font-size: .88rem;
 }
 
 .stat-card,
@@ -593,6 +645,109 @@ body {
 
 .table td {
     vertical-align: middle;
+}
+
+/* =========================================================================
+   Compact table layout — used on tables with many columns (health records,
+   farm activities, transactions, payroll, etc.) to fit the available content
+   width (sidebar-adjusted) without horizontal scrolling. table-layout: fixed
+   makes column width purely a function of the declared percentages below
+   (via colgroup <col style="width:">), not the longest cell content, so one
+   long batch code or description can never stretch the whole table — it
+   wraps or truncates inside its own column instead.
+   ========================================================================= */
+.table-compact {
+    table-layout: fixed;
+    font-size: .83rem;
+}
+
+.table-compact thead th {
+    white-space: normal;
+    line-height: 1.2;
+    padding: .5rem .55rem;
+}
+
+.table-compact td {
+    padding: .5rem .55rem;
+    overflow-wrap: break-word;
+}
+
+.table-compact .cell-wrap {
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+/* Identifiers and codes (batch codes, reference numbers, usernames) must
+   never break mid-string — a line break inside "BATCH-2024-0088" is harder
+   to read than the original overflow it was meant to fix. Keep them on one
+   line and truncate with an ellipsis instead; the full value is always
+   available via the title attribute. */
+.table-compact .cell-id {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Free-text content (descriptions, remarks, medicine/vaccine names) wraps
+   onto as many lines as it needs — the row grows to fit, it is never
+   clipped. (Kept as a distinct class from .cell-wrap so description-type
+   columns can still be styled differently if needed later; today the
+   behavior is identical.) */
+.table-compact .cell-clamp {
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+.table-compact .btn-sm {
+    padding: .18rem .5rem;
+    font-size: .76rem;
+}
+
+/* Row-action buttons/forms: lay out in a right-aligned, wrapping row so a
+   cell with several actions wraps onto a second line inside its own column
+   instead of overflowing past the table's fixed width. */
+.table-compact .action-cell {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .25rem;
+    row-gap: .25rem;
+}
+
+.table-compact .action-cell form {
+    display: inline-flex;
+}
+
+/* A <select>/<input> dropped inside a compact table cell (e.g. an inline
+   status-change control) must shrink with its column, not force the column
+   — and the table — wider than its fixed width allows. */
+.table-compact td .form-select,
+.table-compact td .form-control {
+    max-width: 100%;
+}
+
+/* Expandable secondary-detail row, toggled open per record via Bootstrap's
+   collapse component — keeps full record detail accessible without adding
+   columns to the primary table or a separate page navigation. */
+.table-detail-toggle {
+    white-space: nowrap;
+}
+
+.table-detail-row > td {
+    background: var(--cream, #faf7f1);
+    padding: 0;
+}
+
+.table-detail-row .table-detail-body {
+    padding: .75rem 1rem;
+    font-size: .82rem;
+}
+
+@media (max-width: 1399.98px) {
+    .table-compact {
+        font-size: .8rem;
+    }
 }
 
 .form-label {
@@ -1068,7 +1223,7 @@ body {
     }
 
     .page-heading h1 {
-        font-size: 1.55rem;
+        font-size: 1.35rem;
     }
 
     .panel-body {

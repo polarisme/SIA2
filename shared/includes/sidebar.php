@@ -6,13 +6,13 @@ $activeNavigation = $activeNavigation ?? '';
 <?php if ($activeSystem === 'user_management'): ?>
     <?php
     $navigationItems = [
-        ['key' => 'user_management_dashboard', 'label' => 'Dashboard', 'icon' => 'bi-grid-1x2', 'url' => app_url('/shared/user-management/index.php')],
+        ['key' => 'user_management_dashboard', 'label' => 'Dashboard', 'icon' => 'bi-grid-1x2', 'url' => app_url('/shared/user-management/dashboard.php')],
         ['key' => 'user_management_users', 'label' => 'User Management', 'icon' => 'bi-people', 'url' => app_url('/shared/user-management/index.php')],
         ['key' => 'user_management_audit', 'label' => 'Audit Trail', 'icon' => 'bi-journal-text', 'url' => app_url('/shared/user-management/audit-trail.php')],
     ];
     ?>
     <aside class="app-sidebar" id="app-sidebar" aria-label="User management navigation">
-        <a class="sidebar-brand" href="<?= h(app_url('/shared/user-management/index.php')) ?>">
+        <a class="sidebar-brand" href="<?= h(app_url('/shared/user-management/dashboard.php')) ?>">
             <span class="sidebar-brand-icon" aria-hidden="true"><i class="bi bi-shield-lock"></i></span>
             <span class="sidebar-brand-copy">
                 <strong>YIELD</strong>
@@ -80,6 +80,8 @@ $activeNavigation = $activeNavigation ?? '';
         ['key' => 'ais_transactions_expense', 'label' => 'Expenses', 'icon' => 'bi-graph-down-arrow', 'url' => app_url('/ais/transactions/index.php') . '?type=Expense'],
         ['key' => 'ais_receivables', 'label' => 'Accounts Receivable', 'icon' => 'bi-cash-stack', 'url' => app_url('/ais/receivables/index.php')],
         ['key' => 'ais_payables', 'label' => 'Accounts Payable', 'icon' => 'bi-wallet2', 'url' => app_url('/ais/payables/index.php')],
+        ['key' => 'ais_payroll', 'label' => 'Payroll', 'icon' => 'bi-cash-coin', 'url' => app_url('/ais/payroll/index.php')],
+        ['key' => 'ais_employees', 'label' => 'Employees', 'icon' => 'bi-people', 'url' => app_url('/ais/employees/index.php')],
         ['key' => 'ais_accounts', 'label' => 'Accounts', 'icon' => 'bi-journal-text', 'url' => app_url('/ais/accounts/index.php')],
         ['key' => 'ais_reports', 'label' => 'Reports', 'icon' => 'bi-file-earmark-bar-graph', 'url' => app_url('/ais/reports/index.php')],
         ['key' => 'ais_recycle_bin', 'label' => 'Recycle Bin', 'icon' => 'bi-trash3', 'url' => app_url('/ais/recycle-bin/index.php')],
@@ -99,6 +101,7 @@ $activeNavigation = $activeNavigation ?? '';
                 <?php if ($navigationItem['key'] === 'ais_recycle_bin' && !is_poultry_admin()): ?><?php continue; ?><?php endif; ?>
                 <?php if ($navigationItem['key'] === 'ais_transactions_all'): ?><div class="sidebar-caption">TRANSACTIONS</div><?php endif; ?>
                 <?php if ($navigationItem['key'] === 'ais_receivables'): ?><div class="sidebar-caption">RECEIVABLES &amp; PAYABLES</div><?php endif; ?>
+                <?php if ($navigationItem['key'] === 'ais_payroll'): ?><div class="sidebar-caption">PAYROLL</div><?php endif; ?>
                 <?php if ($navigationItem['key'] === 'ais_accounts'): ?><div class="sidebar-caption">SYSTEM</div><?php endif; ?>
                 <a class="sidebar-link<?= $activeNavigation === $navigationItem['key'] ? ' is-active' : '' ?>"
                    href="<?= h($navigationItem['url']) ?>"

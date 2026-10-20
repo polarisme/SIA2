@@ -380,5 +380,79 @@ CREATE TABLE IF NOT EXISTS scenarios (
   KEY `idx_scenarios_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Payroll (migrations/014_payroll.sql)
+CREATE TABLE IF NOT EXISTS employees (
+  `employee_id` int NOT NULL AUTO_INCREMENT,
+  `employee_code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `full_name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `job_title` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `department` enum('Farm Management','Broiler Operations','Layer Operations','Feed & Inventory','Maintenance','Egg Collection & Packing','Harvest & Loading','Administration & Accounting') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `employment_status` enum('Active','Inactive','Terminated') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Active',
+  `pay_type` enum('Daily','Monthly') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Daily',
+  `basic_rate` decimal(10,2) NOT NULL,
+  `date_hired` date NOT NULL,
+  `notes` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `deleted_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`employee_id`),
+  UNIQUE KEY `uniq_employee_code` (`employee_code`),
+  KEY `idx_employees_department` (`department`),
+  KEY `idx_employees_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payroll_periods (
+  `payroll_period_id` int NOT NULL AUTO_INCREMENT,
+  `period_start` date NOT NULL,
+  `period_end` date NOT NULL,
+  `pay_date` date NOT NULL,
+  `status` enum('Draft','Reviewed','Approved','Paid') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Draft',
+  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `approved_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `paid_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `paid_at` datetime DEFAULT NULL,
+  `wages_transaction_id` int DEFAULT NULL,
+  `employer_contributions_transaction_id` int DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `deleted_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`payroll_period_id`),
+  UNIQUE KEY `uniq_payroll_period_dates` (`period_start`,`period_end`),
+  KEY `idx_payroll_periods_status` (`status`),
+  KEY `idx_payroll_periods_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payroll_items (
+  `payroll_item_id` int NOT NULL AUTO_INCREMENT,
+  `payroll_period_id` int NOT NULL,
+  `employee_id` int NOT NULL,
+  `days_worked` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `basic_pay` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `overtime_hours` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `overtime_pay` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `allowances` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `gross_pay` decimal(12,2) GENERATED ALWAYS AS (((`basic_pay` + `overtime_pay`) + `allowances`)) STORED,
+  `sss_employee` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `philhealth_employee` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `pagibig_employee` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `other_deductions` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `total_deductions` decimal(12,2) GENERATED ALWAYS AS ((((`sss_employee` + `philhealth_employee`) + `pagibig_employee`) + `other_deductions`)) STORED,
+  `net_pay` decimal(12,2) GENERATED ALWAYS AS (((((((`basic_pay` + `overtime_pay`) + `allowances`) - `sss_employee`) - `philhealth_employee`) - `pagibig_employee`) - `other_deductions`)) STORED,
+  `sss_employer` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `philhealth_employer` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `pagibig_employer` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `employer_cost` decimal(12,2) GENERATED ALWAYS AS ((((((`basic_pay` + `overtime_pay`) + `allowances`) + `sss_employer`) + `philhealth_employer`) + `pagibig_employer`)) STORED,
+  `allocation_type` enum('Flock','Overhead') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Overhead',
+  `allocation_flock_id` int DEFAULT NULL,
+  `remarks` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `deleted_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`payroll_item_id`),
+  UNIQUE KEY `uniq_payroll_item_period_employee` (`payroll_period_id`,`employee_id`),
+  KEY `idx_payroll_items_period` (`payroll_period_id`),
+  KEY `idx_payroll_items_employee` (`employee_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 

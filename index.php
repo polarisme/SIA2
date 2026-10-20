@@ -1,13 +1,22 @@
 <?php
 declare(strict_types=1);
 
-// Public entry point. Authenticated users go straight to the PMS dashboard;
-// everyone else sees only this landing page (no PMS/AIS/Integrated data of
-// any kind is rendered here).
+// Public entry point. Authenticated users go straight to their own system's
+// dashboard (routing by system_access, not a hardcoded system — landing here
+// while already authenticated for AIS/Integrated/User Management used to
+// bounce through /pms/index.php, which require_authentication() would then
+// reject as unauthorized and redirect back here, looping); everyone else sees
+// only this landing page (no PMS/AIS/Integrated data of any kind is rendered here).
 require_once __DIR__ . '/shared/includes/bootstrap.php';
 
 if (is_authenticated()) {
-    redirect_to(app_url('/pms/index.php'));
+    $ownDashboard = [
+        'pms' => '/pms/index.php',
+        'ais' => '/ais/index.php',
+        'integrated' => '/integrated/index.php',
+        'user_management' => '/shared/user-management/dashboard.php',
+    ][$_SESSION['user']['system_access'] ?? ''] ?? '/pms/index.php';
+    redirect_to(app_url($ownDashboard));
 }
 
 $pageTitle = 'YIELD';
@@ -26,7 +35,7 @@ $pageTitle = 'YIELD';
 <header class="public-nav">
     <div class="public-nav-inner container-fluid app-width">
         <span class="public-brand">
-            <a class="public-brand-icon" href="<?= h(app_url('/shared/user-management/index.php')) ?>" aria-label="YIELD">
+            <a class="public-brand-icon" href="<?= h(app_url('/shared/user-management/dashboard.php')) ?>" aria-label="YIELD">
                 <i class="bi bi-flower1" aria-hidden="true"></i>
             </a>
             YIELD

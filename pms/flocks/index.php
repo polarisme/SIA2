@@ -312,12 +312,17 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 $statusFilter = '';
             }
 
+            $whereSql = $conditions !== [] ? ' WHERE ' . implode(' AND ', $conditions) : '';
+
+            $countStatement = $pdo->prepare('SELECT COUNT(*) FROM flocks' . $whereSql);
+            $countStatement->execute($parameters);
+            $totalRecords = (int) $countStatement->fetchColumn();
+
+            ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
             $sql = 'SELECT flock_id, batch_code, breed, start_date, age_at_arrival_days, initial_birds, current_birds, status
-                    FROM flocks';
-            if ($conditions !== []) {
-                $sql .= ' WHERE ' . implode(' AND ', $conditions);
-            }
-            $sql .= ' ORDER BY created_at DESC, flock_id DESC';
+                    FROM flocks' . $whereSql . ' ORDER BY created_at DESC, flock_id DESC
+                    LIMIT ' . $perPage . ' OFFSET ' . $offset;
             $statement = $pdo->prepare($sql);
             $statement->execute($parameters);
             $records = $statement->fetchAll();
@@ -538,11 +543,12 @@ require __DIR__ . '/../../shared/includes/header.php';
         <div class="panel-heading">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <h2 class="h5 mb-0">Flock records</h2>
-                <span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span>
+                <span class="text-secondary small"><?= number_format($totalRecords ?? count($records)) ?> record<?= ($totalRecords ?? count($records)) === 1 ? '' : 's' ?></span>
             </div>
         </div>
         <div class="panel-body border-bottom">
             <form method="get" action="index.php" class="row g-2 align-items-end">
+                <?php if (isset($perPage)): pagination_preserve_per_page_field($perPage); endif; ?>
                 <div class="col-md-4">
                     <label class="form-label" for="batch_search">Batch code</label>
                     <input class="form-control" id="batch_search" name="batch_code" value="<?= h($batchSearch ?? '') ?>" placeholder="Search batch code">
@@ -567,7 +573,11 @@ require __DIR__ . '/../../shared/includes/header.php';
             </form>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 5%"><col style="width: 13%"><col style="width: 14%"><col style="width: 10%">
+                    <col style="width: 9%"><col style="width: 9%"><col style="width: 9%"><col style="width: 10%"><col style="width: 21%">
+                </colgroup>
                 <thead>
                     <tr>
                         <th scope="col">Flock ID</th>
@@ -588,21 +598,23 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <?php foreach ($records as $record): ?>
                             <tr>
                                 <td><?= (int) $record['flock_id'] ?></td>
-                                <td class="fw-semibold"><?= h($record['batch_code']) ?></td>
-                                <td><?= h($record['breed']) ?></td>
-                                <td><?= h($record['start_date']) ?></td>
-                                <td><?php $rowAge = pms_flock_age($record['start_date'], (int) $record['age_at_arrival_days']); ?><?= number_format($rowAge['days']) ?> days</td>
+                                <td class="fw-semibold"><span class="cell-id" title="<?= h($record['batch_code']) ?>"><?= h($record['batch_code']) ?></span></td>
+                                <td class="cell-wrap"><?= h($record['breed']) ?></td>
+                                <td><span class="cell-id" title="<?= h($record['start_date']) ?>"><?= h($record['start_date']) ?></span></td>
+                                <td class="cell-wrap"><?php $rowAge = pms_flock_age($record['start_date'], (int) $record['age_at_arrival_days']); ?><?= number_format($rowAge['days']) ?> days</td>
                                 <td class="text-end"><?= number_format((int) $record['initial_birds']) ?></td>
                                 <td class="text-end"><?= number_format((int) $record['current_birds']) ?></td>
-                                <td><span class="badge text-bg-<?= h(flock_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>
-                                <td class="text-end text-nowrap">
-                                    <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['flock_id'] ?>">View</a>
-                                    <?php if ($canManage): ?>
-                                        <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['flock_id'] ?>">Edit</a>
-                                        <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this flock record to the Recycle Bin?\nBatch Code: <?= h($record['batch_code']) ?>\nThis record can be restored later.');">
-                                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="flock_id" value="<?= (int) $record['flock_id'] ?>"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
-                                        </form>
-                                    <?php endif; ?>
+                                <td class="cell-wrap"><span class="badge text-bg-<?= h(flock_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>
+                                <td class="text-end">
+                                    <div class="d-flex flex-wrap justify-content-end gap-1">
+                                        <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['flock_id'] ?>">View</a>
+                                        <?php if ($canManage): ?>
+                                            <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['flock_id'] ?>">Edit</a>
+                                            <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this flock record to the Recycle Bin?\nBatch Code: <?= h($record['batch_code']) ?>\nThis record can be restored later.');">
+                                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="flock_id" value="<?= (int) $record['flock_id'] ?>"><button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -610,6 +622,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </tbody>
             </table>
         </div>
+        <?php if (isset($totalRecords, $pageNum, $perPage)): render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); endif; ?>
     </section>
 <?php endif; ?>
 

@@ -391,15 +391,23 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 $conditions[] = "a.status IN ('Scheduled', 'In Progress') AND a.scheduled_date <= CURDATE()";
             }
 
+            $whereSql = $conditions !== [] ? ' WHERE ' . implode(' AND ', $conditions) : '';
+
+            $countStatement = $pdo->prepare(
+                'SELECT COUNT(*) FROM farm_activities a LEFT JOIN flocks f ON f.flock_id = a.flock_id' . $whereSql
+            );
+            $countStatement->execute($parameters);
+            $totalRecords = (int) $countStatement->fetchColumn();
+
+            ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
             $sql = "SELECT a.activity_id, a.flock_id, f.batch_code, a.activity_type, a.description,
                            a.scheduled_date, a.assigned_to, a.status, a.completed_date,
                            (a.status IN ('Scheduled', 'In Progress') AND a.scheduled_date < CURDATE()) AS is_overdue
                     FROM farm_activities a
-                    LEFT JOIN flocks f ON f.flock_id = a.flock_id";
-            if ($conditions !== []) {
-                $sql .= ' WHERE ' . implode(' AND ', $conditions);
-            }
-            $sql .= ' ORDER BY a.scheduled_date DESC, a.activity_id DESC';
+                    LEFT JOIN flocks f ON f.flock_id = a.flock_id" . $whereSql . '
+                    ORDER BY a.scheduled_date DESC, a.activity_id DESC
+                    LIMIT ' . $perPage . ' OFFSET ' . $offset;
             $statement = $pdo->prepare($sql);
             $statement->execute($parameters);
             $records = $statement->fetchAll();
@@ -546,10 +554,11 @@ require __DIR__ . '/../../shared/includes/header.php';
     <section class="content-panel">
         <div class="panel-heading d-flex flex-wrap align-items-center justify-content-between gap-2">
             <h2 class="h5 mb-0">Activity schedule</h2>
-            <span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span>
+            <span class="text-secondary small"><?= number_format($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span>
         </div>
         <div class="panel-body border-bottom">
             <form method="get" action="index.php" class="row g-2 align-items-end">
+                <?php pagination_preserve_per_page_field($perPage); ?>
                 <div class="col-md-2">
                     <label class="form-label" for="filter_type">Activity type</label>
                     <select class="form-select" id="filter_type" name="activity_type">
@@ -585,24 +594,28 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <label class="form-check-label" for="filter_overdue">Due today / overdue only</label>
                     </div>
                 </div>
-                <div class="col-md-2 d-flex gap-2">
-                    <button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button>
+                <div class="col-md-2 ms-md-auto d-flex gap-2">
+                    <button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button>
                     <a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a>
                 </div>
             </form>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 5%"><col style="width: 8%"><col style="width: 8%"><col style="width: 22%">
+                    <col style="width: 9%"><col style="width: 9%"><col style="width: 10%"><col style="width: 8%"><col style="width: 21%">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th scope="col">Activity ID</th>
-                        <th scope="col">Flock / Batch Code</th>
-                        <th scope="col">Activity Type</th>
+                        <th scope="col">ID</th>
+                        <th scope="col">Batch</th>
+                        <th scope="col">Type</th>
                         <th scope="col">Description</th>
-                        <th scope="col">Scheduled Date</th>
+                        <th scope="col">Scheduled</th>
                         <th scope="col">Assigned To</th>
                         <th scope="col">Status</th>
-                        <th scope="col">Completed Date</th>
+                        <th scope="col">Completed</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
@@ -613,35 +626,37 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <?php foreach ($records as $record): ?>
                             <tr>
                                 <td><?= (int) $record['activity_id'] ?></td>
-                                <td><?= $record['batch_code'] !== null ? h($record['batch_code']) : '<span class="text-secondary">Farm-wide</span>' ?></td>
-                                <td><?= h($record['activity_type']) ?></td>
-                                <td><?= h($record['description'] ?? '') ?></td>
-                                <td><?= h($record['scheduled_date']) ?></td>
-                                <td><?= h($record['assigned_to'] ?? '') ?></td>
+                                <td><?= $record['batch_code'] !== null ? '<span class="cell-id" title="' . h($record['batch_code']) . '">' . h($record['batch_code']) . '</span>' : '<span class="text-secondary">Farm-wide</span>' ?></td>
+                                <td class="cell-wrap"><?= h($record['activity_type']) ?></td>
+                                <td class="cell-clamp" title="<?= h($record['description'] ?? '') ?>"><?= h($record['description'] ?? '') ?></td>
+                                <td><span class="cell-id" title="<?= h($record['scheduled_date']) ?>"><?= h($record['scheduled_date']) ?></span></td>
+                                <td class="cell-wrap"><?= h($record['assigned_to'] ?? '') ?></td>
                                 <td>
                                     <span class="badge text-bg-<?= h(activity_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span>
                                     <?php if ((bool) $record['is_overdue']): ?><span class="badge text-bg-danger">Overdue</span><?php endif; ?>
                                 </td>
-                                <td><?= h($record['completed_date'] ?? '') ?></td>
-                                <td class="text-end text-nowrap">
+                                <td><?php if ($record['completed_date'] !== null): ?><span class="cell-id" title="<?= h($record['completed_date']) ?>"><?= h($record['completed_date']) ?></span><?php endif; ?></td>
+                                <td class="text-end">
                                     <?php if ($canManage): ?>
-                                        <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['activity_id'] ?>">Edit</a>
-                                        <form method="post" action="index.php?action=status" class="d-inline-flex align-items-center gap-1">
-                                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                            <input type="hidden" name="action" value="status">
-                                            <input type="hidden" name="activity_id" value="<?= (int) $record['activity_id'] ?>">
-                                            <label class="visually-hidden" for="status-<?= (int) $record['activity_id'] ?>">Change status for activity <?= (int) $record['activity_id'] ?></label>
-                                            <select class="form-select form-select-sm" id="status-<?= (int) $record['activity_id'] ?>" name="status">
-                                                <?php foreach (FARM_ACTIVITY_STATUSES as $statusOption): ?><option value="<?= h($statusOption) ?>" <?= $record['status'] === $statusOption ? 'selected' : '' ?>><?= h($statusOption) ?></option><?php endforeach; ?>
-                                            </select>
-                                            <button class="btn btn-sm btn-outline-secondary" type="submit">Update</button>
-                                        </form>
-                                        <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this farm activity to the Recycle Bin?\nActivity: <?= h($record['activity_type']) ?>\nDate: <?= h($record['scheduled_date']) ?>\nThis record can be restored later.');">
-                                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                            <input type="hidden" name="action" value="delete">
-                                            <input type="hidden" name="activity_id" value="<?= (int) $record['activity_id'] ?>">
-                                            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
-                                        </form>
+                                        <div class="action-cell">
+                                            <form method="post" action="index.php?action=status" class="d-flex align-items-center gap-1">
+                                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                                <input type="hidden" name="action" value="status">
+                                                <input type="hidden" name="activity_id" value="<?= (int) $record['activity_id'] ?>">
+                                                <label class="visually-hidden" for="status-<?= (int) $record['activity_id'] ?>">Change status for activity <?= (int) $record['activity_id'] ?></label>
+                                                <select class="form-select form-select-sm" id="status-<?= (int) $record['activity_id'] ?>" name="status" style="max-width: 7.5rem;">
+                                                    <?php foreach (FARM_ACTIVITY_STATUSES as $statusOption): ?><option value="<?= h($statusOption) ?>" <?= $record['status'] === $statusOption ? 'selected' : '' ?>><?= h($statusOption) ?></option><?php endforeach; ?>
+                                                </select>
+                                                <button class="btn btn-sm btn-outline-secondary" type="submit" title="Update status" aria-label="Update status"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
+                                            </form>
+                                            <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['activity_id'] ?>" title="Edit" aria-label="Edit activity <?= (int) $record['activity_id'] ?>"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                                            <form method="post" action="index.php?action=delete" onsubmit="return confirm('Move this farm activity to the Recycle Bin?\nActivity: <?= h($record['activity_type']) ?>\nDate: <?= h($record['scheduled_date']) ?>\nThis record can be restored later.');">
+                                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="activity_id" value="<?= (int) $record['activity_id'] ?>">
+                                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete" aria-label="Delete activity <?= (int) $record['activity_id'] ?>"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                            </form>
+                                        </div>
                                     <?php else: ?>
                                         <span class="text-secondary">Read only</span>
                                     <?php endif; ?>
@@ -652,6 +667,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </tbody>
             </table>
         </div>
+        <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
     </section>
 <?php endif; ?>
 

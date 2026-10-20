@@ -32,30 +32,12 @@ function is_last_active_it_admin(PDO $pdo, int $targetUserId): bool
     return (int) $statement->fetchColumn() === 0;
 }
 
-$counts = ['total' => 0, 'active' => 0, 'inactive' => 0, 'pms' => 0, 'ais' => 0, 'integrated' => 0, 'user_management' => 0];
-if ($pdo instanceof PDO && $databaseError === null) {
-    try {
-        $row = $pdo->query(
-            "SELECT COUNT(*) AS total,
-                    SUM(status = 'Active') AS active,
-                    SUM(status = 'Inactive') AS inactive,
-                    SUM(system_access = 'pms') AS pms,
-                    SUM(system_access = 'ais') AS ais,
-                    SUM(system_access = 'integrated') AS integrated,
-                    SUM(system_access = 'user_management') AS user_management
-             FROM users WHERE deleted_at IS NULL"
-        )->fetch();
-        $counts = array_map('intval', $row);
-    } catch (PDOException $exception) {
-        error_log('User management dashboard query failed: ' . $exception->getMessage());
-        $databaseError = 'Dashboard figures could not be loaded because of a database error.';
-    }
-}
-
 $showDeleted = (string) ($_GET['show_deleted'] ?? '') === '1';
 $search = trim((string) ($_GET['search'] ?? ''));
 
 $users = [];
+$totalUsers = 0;
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
         $conditions = [$showDeleted ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'];
@@ -65,8 +47,14 @@ if ($pdo instanceof PDO && $databaseError === null) {
             $parameters[] = '%' . $search . '%';
             $parameters[] = '%' . $search . '%';
         }
+        $whereSql = implode(' AND ', $conditions);
+
+        $countStatement = $pdo->prepare('SELECT COUNT(*) FROM users WHERE ' . $whereSql);
+        $countStatement->execute($parameters);
+        $totalUsers = (int) $countStatement->fetchColumn();
+
         $statement = $pdo->prepare(
-            'SELECT * FROM users WHERE ' . implode(' AND ', $conditions) . ' ORDER BY system_access, username'
+            'SELECT * FROM users WHERE ' . $whereSql . " ORDER BY system_access, username LIMIT $perPage OFFSET $offset"
         );
         $statement->execute($parameters);
         $users = $statement->fetchAll();
@@ -78,37 +66,20 @@ if ($pdo instanceof PDO && $databaseError === null) {
 
 require __DIR__ . '/../includes/header.php';
 ?>
-<div class="page-heading">
-    <div class="eyebrow">YIELD</div>
-    <h1>User Management</h1>
-    <p>Create and administer accounts for PMS, AIS, the Integrated System, and User Management itself. Each account is authorized for exactly one system.</p>
+<div class="page-heading d-flex flex-wrap align-items-end justify-content-between gap-3">
+    <div>
+        <div class="eyebrow">YIELD</div>
+        <h1>User Management</h1>
+        <p>Create and administer accounts for PMS, AIS, the Integrated System, and User Management itself. Each account is authorized for exactly one system.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="dashboard.php"><i class="bi bi-grid-1x2" aria-hidden="true"></i> IT Admin Dashboard</a>
 </div>
 <?php if ($databaseError !== null): ?><div class="alert alert-danger" role="alert"><?= h($databaseError) ?></div><?php endif; ?>
-
-<div class="row g-3 mb-4">
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value"><?= number_format($counts['total']) ?></div></div>
-    </div>
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value text-success"><?= number_format($counts['active']) ?></div></div>
-    </div>
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">Inactive</div><div class="stat-value"><?= number_format($counts['inactive']) ?></div></div>
-    </div>
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">PMS Users</div><div class="stat-value"><?= number_format($counts['pms']) ?></div></div>
-    </div>
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">AIS Users</div><div class="stat-value"><?= number_format($counts['ais']) ?></div></div>
-    </div>
-    <div class="col-sm-4 col-lg-2">
-        <div class="stat-card"><div class="stat-label">Integrated Users</div><div class="stat-value"><?= number_format($counts['integrated']) ?></div></div>
-    </div>
-</div>
 
 <section class="content-panel mb-4">
     <div class="panel-body">
         <form method="get" action="index.php" class="row g-2 align-items-end">
+            <?php pagination_preserve_per_page_field($perPage); ?>
             <div class="col-md-5">
                 <label class="form-label" for="search">Search</label>
                 <input class="form-control" id="search" name="search" value="<?= h($search) ?>" placeholder="Username or display name">
@@ -129,14 +100,18 @@ require __DIR__ . '/../includes/header.php';
 
 <section class="content-panel">
     <div class="panel-heading d-flex justify-content-between align-items-center">
-        <h2 class="h5 mb-0"><?= $showDeleted ? 'Recycle Bin — Deleted Users' : 'Users' ?></h2>
+        <h2 class="h5 mb-0"><?= $showDeleted ? 'Recycle Bin — Deleted Users' : 'Users' ?> <span class="text-secondary small fw-normal"><?= number_format($totalUsers) ?></span></h2>
         <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary btn-sm" href="audit-trail.php">View Audit Trail</a>
             <?php if (!$showDeleted): ?><a class="btn btn-primary btn-sm" href="create.php">Create User</a><?php endif; ?>
         </div>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 6%"><col style="width: 13%"><col style="width: 13%"><col style="width: 11%">
+                <col style="width: 9%"><col style="width: 9%"><col style="width: 11%"><col style="width: 11%"><col style="width: 17%">
+            </colgroup>
             <thead><tr><th>User ID</th><th>Username</th><th>Display Name</th><th>Assigned System</th><th>Role</th><th>Status</th><th>Date Created</th><th>Last Login</th><th class="text-end">Actions</th></tr></thead>
             <tbody>
                 <?php if ($users === []): ?>
@@ -145,14 +120,15 @@ require __DIR__ . '/../includes/header.php';
                     <?php foreach ($users as $user): ?>
                         <tr>
                             <td><?= (int) $user['user_id'] ?></td>
-                            <td><?= h($user['username']) ?><?= (int) $user['user_id'] === $currentUserId ? ' <span class="badge text-bg-secondary">You</span>' : '' ?></td>
-                            <td><?= h($user['display_name']) ?></td>
-                            <td><span class="badge text-bg-<?= h(system_badge($user['system_access'])) ?>"><?= h(SYSTEM_LABELS[$user['system_access']] ?? $user['system_access']) ?></span></td>
-                            <td><?= h($user['role']) ?></td>
-                            <td><span class="badge text-bg-<?= h(user_status_badge($user['status'])) ?>"><?= h($user['status']) ?></span></td>
-                            <td><?= h((string) $user['created_at']) ?></td>
-                            <td><?= h((string) ($user['last_login_at'] ?? '—')) ?></td>
-                            <td class="text-end text-nowrap">
+                            <td><span class="cell-id" title="<?= h($user['username']) ?>"><?= h($user['username']) ?></span><?= (int) $user['user_id'] === $currentUserId ? ' <span class="badge text-bg-secondary">You</span>' : '' ?></td>
+                            <td class="cell-wrap"><?= h($user['display_name']) ?></td>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= h(system_badge($user['system_access'])) ?>"><?= h(SYSTEM_LABELS[$user['system_access']] ?? $user['system_access']) ?></span></td>
+                            <td class="cell-wrap"><?= h($user['role']) ?></td>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= h(user_status_badge($user['status'])) ?>"><?= h($user['status']) ?></span></td>
+                            <td><span class="cell-id" title="<?= h((string) $user['created_at']) ?>"><?= h((string) $user['created_at']) ?></span></td>
+                            <td><span class="cell-id" title="<?= h((string) ($user['last_login_at'] ?? '—')) ?>"><?= h((string) ($user['last_login_at'] ?? '—')) ?></span></td>
+                            <td class="text-end">
+                                <div class="d-flex flex-wrap justify-content-end gap-1">
                                 <?php if ($showDeleted): ?>
                                     <form method="post" action="delete.php" class="d-inline" onsubmit="return confirm('Restore this user account?\nUsername: <?= h($user['username']) ?>\nThey will be able to sign in again (if Active).');">
                                         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
@@ -182,6 +158,7 @@ require __DIR__ . '/../includes/header.php';
                                         </form>
                                     <?php endif; ?>
                                 <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -189,5 +166,6 @@ require __DIR__ . '/../includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $totalUsers, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

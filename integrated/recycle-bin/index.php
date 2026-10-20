@@ -125,6 +125,11 @@ if ($pdo instanceof PDO) {
         $databaseError = 'Recycle Bin records could not be loaded because of a database error.';
     }
 }
+// Merges several tables in PHP (one query per record type, then sorted together), so
+// there is no single SQL WHERE to paginate with LIMIT/OFFSET — slice the merged array.
+$totalRecords = count($rows);
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+$rows = array_slice($rows, $offset, $perPage);
 
 require __DIR__ . '/../../shared/includes/header.php';
 ?>
@@ -137,10 +142,11 @@ require __DIR__ . '/../../shared/includes/header.php';
 <section class="content-panel">
     <div class="panel-heading d-flex justify-content-between align-items-center gap-3">
         <h2 class="h5 mb-0">Deleted Integrated records</h2>
-        <span class="text-secondary small"><?= number_format(count($rows)) ?> record<?= count($rows) === 1 ? '' : 's' ?></span>
+        <span class="text-secondary small"><?= number_format($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span>
     </div>
     <div class="panel-body border-bottom">
         <form method="get" action="index.php" class="row g-2 align-items-end">
+            <?php pagination_preserve_per_page_field($perPage); ?>
             <div class="col-md-3">
                 <label class="form-label" for="record_type">Record type</label>
                 <select class="form-select" id="record_type" name="record_type">
@@ -150,29 +156,40 @@ require __DIR__ . '/../../shared/includes/header.php';
             </div>
             <div class="col-md-3"><label class="form-label" for="deleted_date">Date deleted</label><input class="form-control" type="date" id="deleted_date" name="deleted_date" value="<?= h($dateFilter) ?>"></div>
             <div class="col-md-4"><label class="form-label" for="search">Search identifier</label><input class="form-control" id="search" name="search" value="<?= h($search) ?>" placeholder="Batch code, item name, scenario name..."></div>
-            <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button><a class="btn btn-outline-secondary" href="index.php" aria-label="Clear filters">Clear</a></div>
+            <div class="col-md-2 d-flex gap-2"><button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button><a class="btn btn-outline-secondary" href="index.php" aria-label="Clear filters">Clear</a></div>
         </form>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 14%"><col style="width: 8%"><col style="width: 24%">
+                <col style="width: 14%"><col style="width: 14%"><col style="width: 26%">
+            </colgroup>
             <thead><tr><th scope="col">Record Type</th><th scope="col">Record ID</th><th scope="col">Identifier</th><th scope="col">Deleted Date</th><th scope="col">Deleted By</th><th scope="col">Actions</th></tr></thead>
             <tbody>
             <?php if ($rows === []): ?><tr><td colspan="6" class="text-center text-secondary py-5">No deleted records match these filters.</td></tr>
             <?php else: foreach ($rows as $row): ?>
                 <tr>
-                    <td><?= h($row['label']) ?></td><td><?= (int) $row['record_id'] ?></td><td><?= h($row['identity']) ?></td><td><?= h($row['deleted_at']) ?></td><td><?= h($row['deleted_by']) ?></td>
-                    <td class="text-nowrap">
-                        <form method="post" action="index.php" class="d-inline" onsubmit="return confirm('Restore this <?= h($row['label']) ?> record?\nIdentifier: <?= h($row['identity']) ?>\nIt will return to the active system.');">
-                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="record_type" value="<?= h($row['type']) ?>"><input type="hidden" name="record_id" value="<?= (int) $row['record_id'] ?>"><input type="hidden" name="operation" value="restore"><button class="btn btn-sm btn-outline-primary" type="submit">Restore</button>
-                        </form>
-                        <form method="post" action="index.php" class="d-inline" onsubmit="return confirm('PERMANENTLY DELETE this <?= h($row['label']) ?> record?\nIdentifier: <?= h($row['identity']) ?>\nThis record cannot be restored after permanent deletion.');">
-                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="record_type" value="<?= h($row['type']) ?>"><input type="hidden" name="record_id" value="<?= (int) $row['record_id'] ?>"><input type="hidden" name="operation" value="permanent_delete"><button class="btn btn-sm btn-danger" type="submit">Permanent Delete</button>
-                        </form>
+                    <td class="cell-wrap"><?= h($row['label']) ?></td>
+                    <td><?= (int) $row['record_id'] ?></td>
+                    <td class="cell-clamp" title="<?= h($row['identity']) ?>"><?= h($row['identity']) ?></td>
+                    <td><span class="cell-id" title="<?= h($row['deleted_at']) ?>"><?= h($row['deleted_at']) ?></span></td>
+                    <td class="cell-wrap"><?= h($row['deleted_by']) ?></td>
+                    <td>
+                        <div class="d-flex flex-wrap justify-content-end gap-1">
+                            <form method="post" action="index.php" class="d-inline" onsubmit="return confirm('Restore this <?= h($row['label']) ?> record?\nIdentifier: <?= h($row['identity']) ?>\nIt will return to the active system.');">
+                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="record_type" value="<?= h($row['type']) ?>"><input type="hidden" name="record_id" value="<?= (int) $row['record_id'] ?>"><input type="hidden" name="operation" value="restore"><button class="btn btn-sm btn-outline-primary" type="submit">Restore</button>
+                            </form>
+                            <form method="post" action="index.php" class="d-inline" onsubmit="return confirm('PERMANENTLY DELETE this <?= h($row['label']) ?> record?\nIdentifier: <?= h($row['identity']) ?>\nThis record cannot be restored after permanent deletion.');">
+                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="record_type" value="<?= h($row['type']) ?>"><input type="hidden" name="record_id" value="<?= (int) $row['record_id'] ?>"><input type="hidden" name="operation" value="permanent_delete"><button class="btn btn-sm btn-danger" type="submit">Permanent Delete</button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
         </table>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

@@ -320,9 +320,15 @@ if ($action === 'view' && $pdo instanceof PDO) {
 // List
 // ---------------------------------------------------------------------------
 $flocks = [];
+$totalRecords = 0;
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
-        $flocks = $pdo->query('SELECT flock_id, batch_code, breed, status, current_birds FROM flocks WHERE deleted_at IS NULL ORDER BY status, batch_code')->fetchAll();
+        $totalRecords = (int) $pdo->query('SELECT COUNT(*) FROM flocks WHERE deleted_at IS NULL')->fetchColumn();
+        $flocks = $pdo->query(
+            "SELECT flock_id, batch_code, breed, status, current_birds FROM flocks WHERE deleted_at IS NULL
+             ORDER BY status, batch_code LIMIT $perPage OFFSET $offset"
+        )->fetchAll();
     } catch (PDOException $exception) {
         error_log('Integrated batch costing list query failed: ' . $exception->getMessage());
         $databaseError = 'Batches could not be loaded because of a database error.';
@@ -342,8 +348,12 @@ require __DIR__ . '/../../shared/includes/header.php';
 <?php if ($databaseError !== null): ?><div class="alert alert-danger" role="alert"><?= h($databaseError) ?></div><?php endif; ?>
 
 <section class="content-panel">
-    <div>
-        <table class="table table-hover mb-0">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 14%"><col style="width: 12%"><col style="width: 10%"><col style="width: 10%">
+                <col style="width: 12%"><col style="width: 12%"><col style="width: 12%"><col style="width: 9%"><col style="width: 9%">
+            </colgroup>
             <thead><tr><th>Batch</th><th>Breed</th><th>Status</th><th class="text-end">Current Birds</th><th class="text-end">Revenue</th><th class="text-end">Total Cost</th><th class="text-end">Gross Profit</th><th class="text-end">Margin</th><th class="text-end">Actions</th></tr></thead>
             <tbody>
                 <?php if ($flocks === []): ?>
@@ -356,9 +366,9 @@ require __DIR__ . '/../../shared/includes/header.php';
                         $margin = $f['revenue'] > 0 ? ($gp / $f['revenue']) * 100 : null;
                         ?>
                         <tr>
-                            <td><?= h($flock['batch_code']) ?></td>
-                            <td><?= h($flock['breed']) ?></td>
-                            <td><span class="badge text-bg-secondary"><?= h($flock['status']) ?></span></td>
+                            <td class="fw-semibold"><span class="cell-id" title="<?= h($flock['batch_code']) ?>"><?= h($flock['batch_code']) ?></span></td>
+                            <td class="cell-wrap"><?= h($flock['breed']) ?></td>
+                            <td class="cell-wrap"><span class="badge text-bg-secondary"><?= h($flock['status']) ?></span></td>
                             <td class="text-end"><?= number_format((int) $flock['current_birds']) ?></td>
                             <?php if (!$f['has_data']): ?>
                                 <td colspan="4" class="text-center text-secondary">No sufficient data available</td>
@@ -375,5 +385,6 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

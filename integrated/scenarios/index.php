@@ -388,9 +388,14 @@ if ($action === 'compare' && $pdo instanceof PDO) {
 <?php }
 
 $scenarios = [];
+$totalRecords = 0;
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
-        $scenarios = $pdo->query('SELECT * FROM scenarios WHERE deleted_at IS NULL ORDER BY created_at DESC')->fetchAll();
+        $totalRecords = (int) $pdo->query('SELECT COUNT(*) FROM scenarios WHERE deleted_at IS NULL')->fetchColumn();
+        $scenarios = $pdo->query(
+            "SELECT * FROM scenarios WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT $perPage OFFSET $offset"
+        )->fetchAll();
     } catch (PDOException $exception) {
         error_log('Integrated scenarios list query failed: ' . $exception->getMessage());
         $databaseError = 'Scenarios could not be loaded because of a database error.';
@@ -415,34 +420,49 @@ require __DIR__ . '/../../shared/includes/header.php';
     <form method="get" action="index.php">
         <input type="hidden" name="action" value="compare">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead><tr><th>Compare</th><th>Scenario</th><th class="text-end">Current Size</th><th class="text-end">Proposed Size</th><th class="text-end">Proj. Production</th><th class="text-end">Proj. Cost</th><th class="text-end">Proj. Revenue</th><th class="text-end">Proj. Profit</th><th>Saved</th><th class="text-end">Actions</th></tr></thead>
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 6%"><col style="width: 28%"><col style="width: 10%"><col style="width: 10%">
+                    <col style="width: 14%"><col style="width: 12%"><col style="width: 20%">
+                </colgroup>
+                <thead><tr><th>Compare</th><th>Scenario</th><th class="text-end">Current Size</th><th class="text-end">Proposed Size</th><th class="text-end">Proj. Profit</th><th>Saved</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                     <?php if ($scenarios === []): ?>
-                        <tr><td colspan="10" class="text-center text-secondary py-4">No scenarios saved yet.</td></tr>
+                        <tr><td colspan="7" class="text-center text-secondary py-4">No scenarios saved yet.</td></tr>
                     <?php else: ?>
                         <?php foreach ($scenarios as $scenario): ?>
                             <tr>
                                 <td><input class="form-check-input" type="checkbox" name="scenario_id[]" value="<?= (int) $scenario['scenario_id'] ?>"></td>
-                                <td>
+                                <td class="cell-wrap">
                                     <strong><?= h($scenario['scenario_name']) ?></strong>
                                     <?php if ((int) $scenario['is_auto_projected'] === 1): ?><span class="badge text-bg-success">AUTO-PROJECTED</span><?php endif; ?>
                                     <?php if ($scenario['description']): ?><div class="small text-secondary"><?= h($scenario['description']) ?></div><?php endif; ?>
                                 </td>
                                 <td class="text-end"><?= number_format((int) $scenario['current_flock_size']) ?></td>
                                 <td class="text-end"><?= number_format((int) $scenario['proposed_flock_size']) ?></td>
-                                <td class="text-end"><?= number_format((float) $scenario['projected_production']) ?></td>
-                                <td class="text-end">₱<?= money($scenario['projected_cost']) ?></td>
-                                <td class="text-end">₱<?= money($scenario['projected_revenue']) ?></td>
                                 <td class="text-end <?= (float) $scenario['projected_profit'] >= 0 ? 'text-success' : 'text-danger' ?> fw-bold">₱<?= money($scenario['projected_profit']) ?></td>
-                                <td><?= h((string) $scenario['created_at']) ?></td>
-                                <td class="text-end text-nowrap">
-                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $scenario['scenario_id'] ?>">Edit</a>
-                                    <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this scenario to the Recycle Bin?\nIt can be restored later.');">
-                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                        <input type="hidden" name="scenario_id" value="<?= (int) $scenario['scenario_id'] ?>">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
-                                    </form>
+                                <td><span class="cell-id" title="<?= h((string) $scenario['created_at']) ?>"><?= h((string) $scenario['created_at']) ?></span></td>
+                                <td class="text-end table-detail-toggle">
+                                    <div class="d-flex flex-wrap justify-content-end gap-1">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#scenario-detail-<?= (int) $scenario['scenario_id'] ?>" aria-expanded="false" aria-label="Show more detail for scenario <?= (int) $scenario['scenario_id'] ?>">
+                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                        </button>
+                                        <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $scenario['scenario_id'] ?>">Edit</a>
+                                        <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this scenario to the Recycle Bin?\nIt can be restored later.');">
+                                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                            <input type="hidden" name="scenario_id" value="<?= (int) $scenario['scenario_id'] ?>">
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="collapse table-detail-row" id="scenario-detail-<?= (int) $scenario['scenario_id'] ?>">
+                                <td colspan="7">
+                                    <div class="table-detail-body row g-3">
+                                        <div class="col-sm-4"><div class="detail-label">Projected Production (eggs)</div><div class="detail-value"><?= number_format((float) $scenario['projected_production']) ?></div></div>
+                                        <div class="col-sm-4"><div class="detail-label">Projected Cost</div><div class="detail-value">₱<?= money($scenario['projected_cost']) ?></div></div>
+                                        <div class="col-sm-4"><div class="detail-label">Projected Revenue</div><div class="detail-value">₱<?= money($scenario['projected_revenue']) ?></div></div>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -456,5 +476,6 @@ require __DIR__ . '/../../shared/includes/header.php';
             </div>
         <?php endif; ?>
     </form>
+    <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

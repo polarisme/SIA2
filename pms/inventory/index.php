@@ -380,14 +380,20 @@ if ($pdo instanceof PDO && !$databaseFailure && $_SERVER['REQUEST_METHOD'] !== '
                 $statusFilter = '';
             }
 
+            $whereSql = $conditions !== [] ? ' WHERE ' . implode(' AND ', $conditions) : '';
+
+            $countStatement = $pdo->prepare('SELECT COUNT(*) FROM poultry_inventory' . $whereSql);
+            $countStatement->execute($parameters);
+            $totalRecords = (int) $countStatement->fetchColumn();
+
+            ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
             $sql = "SELECT item_id, item_code, item_name, category, quantity, unit,
                            reorder_level, unit_cost, ($statusSql) AS calculated_status,
                            (quantity * unit_cost) AS item_value, created_at
-                    FROM poultry_inventory";
-            if ($conditions !== []) {
-                $sql .= ' WHERE ' . implode(' AND ', $conditions);
-            }
-            $sql .= ' ORDER BY item_name ASC, item_id DESC';
+                    FROM poultry_inventory" . $whereSql . '
+                    ORDER BY item_name ASC, item_id DESC
+                    LIMIT ' . $perPage . ' OFFSET ' . $offset;
             $statement = $pdo->prepare($sql);
             $statement->execute($parameters);
             $records = $statement->fetchAll();
@@ -629,11 +635,12 @@ require __DIR__ . '/../../shared/includes/header.php';
         <div class="panel-heading">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <h2 class="h5 mb-0">Inventory items</h2>
-                <span class="text-secondary small"><?= number_format(count($records)) ?> record<?= count($records) === 1 ? '' : 's' ?></span>
+                <span class="text-secondary small"><?= number_format($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span>
             </div>
         </div>
         <div class="panel-body border-bottom">
             <form method="get" action="index.php" class="row g-2 align-items-end">
+                <?php pagination_preserve_per_page_field($perPage); ?>
                 <div class="col-md-3">
                     <label class="form-label" for="code_search">Item code</label>
                     <input class="form-control" id="code_search" name="item_code" value="<?= h($batchSearch) ?>" placeholder="Search item code">
@@ -667,7 +674,11 @@ require __DIR__ . '/../../shared/includes/header.php';
             </form>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 12%"><col style="width: 22%"><col style="width: 12%"><col style="width: 10%">
+                    <col style="width: 8%"><col style="width: 10%"><col style="width: 12%"><col style="width: 14%">
+                </colgroup>
                 <thead>
                     <tr>
                         <th scope="col">Item code</th>
@@ -676,38 +687,47 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <th scope="col" class="text-end">Quantity</th>
                         <th scope="col">Unit</th>
                         <th scope="col" class="text-end">Reorder level</th>
-                        <th scope="col" class="text-end">Unit cost</th>
-                        <th scope="col" class="text-end">Estimated value</th>
                         <th scope="col">Status</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($records === []): ?>
-                        <tr><td colspan="10" class="text-center text-secondary py-5">No inventory items match these filters.</td></tr>
+                        <tr><td colspan="8" class="text-center text-secondary py-5">No inventory items match these filters.</td></tr>
                     <?php else: ?>
                         <?php foreach ($records as $record): ?>
                             <tr>
-                                <td class="fw-semibold"><?= h($record['item_code']) ?></td>
-                                <td><?= h($record['item_name']) ?></td>
-                                <td><?= h($record['category']) ?></td>
+                                <td class="fw-semibold"><span class="cell-id" title="<?= h($record['item_code']) ?>"><?= h($record['item_code']) ?></span></td>
+                                <td class="cell-wrap"><?= h($record['item_name']) ?></td>
+                                <td class="cell-wrap"><?= h($record['category']) ?></td>
                                 <td class="text-end"><?= number_format((float) $record['quantity'], 2) ?></td>
-                                <td><?= h($record['unit']) ?></td>
+                                <td class="cell-wrap"><?= h($record['unit']) ?></td>
                                 <td class="text-end"><?= number_format((float) $record['reorder_level'], 2) ?></td>
-                                <td class="text-end"><?= number_format((float) $record['unit_cost'], 2) ?></td>
-                                <td class="text-end"><?= number_format((float) $record['item_value'], 2) ?></td>
                                 <td><span class="badge text-bg-<?= h(inventory_status_badge($record['calculated_status'])) ?>"><?= h($record['calculated_status']) ?></span></td>
-                                <td class="text-end text-nowrap">
-                                    <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['item_id'] ?>">View</a>
-                                    <?php if ($canManage): ?>
-                                        <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['item_id'] ?>">Edit</a>
-                                        <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this inventory item to the Recycle Bin?\nItem Code: <?= h($record['item_code']) ?>\nThis item can be restored later.');">
-                                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                            <input type="hidden" name="action" value="delete">
-                                            <input type="hidden" name="item_id" value="<?= (int) $record['item_id'] ?>">
-                                            <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Move item <?= h($record['item_code']) ?> to Recycle Bin">Delete</button>
-                                        </form>
-                                    <?php endif; ?>
+                                <td class="text-end table-detail-toggle">
+                                    <div class="d-flex flex-wrap justify-content-end gap-1">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#inventory-detail-<?= (int) $record['item_id'] ?>" aria-expanded="false" aria-label="Show more detail for item <?= h($record['item_code']) ?>">
+                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                        </button>
+                                        <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['item_id'] ?>">View</a>
+                                        <?php if ($canManage): ?>
+                                            <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['item_id'] ?>">Edit</a>
+                                            <form method="post" action="index.php?action=delete" class="d-inline" onsubmit="return confirm('Move this inventory item to the Recycle Bin?\nItem Code: <?= h($record['item_code']) ?>\nThis item can be restored later.');">
+                                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="item_id" value="<?= (int) $record['item_id'] ?>">
+                                                <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Move item <?= h($record['item_code']) ?> to Recycle Bin">Delete</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="collapse table-detail-row" id="inventory-detail-<?= (int) $record['item_id'] ?>">
+                                <td colspan="8">
+                                    <div class="table-detail-body row g-3">
+                                        <div class="col-sm-4"><div class="detail-label">Unit Cost</div><div class="detail-value"><?= number_format((float) $record['unit_cost'], 2) ?></div></div>
+                                        <div class="col-sm-4"><div class="detail-label">Estimated Value</div><div class="detail-value"><?= number_format((float) $record['item_value'], 2) ?></div></div>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -715,6 +735,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </tbody>
             </table>
         </div>
+        <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
     </section>
 <?php endif; ?>
 

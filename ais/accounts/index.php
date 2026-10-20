@@ -221,9 +221,16 @@ if ($search !== '') {
 $whereSql = $conditions === [] ? '' : ('WHERE ' . implode(' AND ', $conditions));
 
 $accounts = [];
+$totalRecords = 0;
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
-        $statement = $pdo->prepare("SELECT * FROM accounts $whereSql ORDER BY account_code");
+        $countStatement = $pdo->prepare("SELECT COUNT(*) FROM accounts $whereSql");
+        $countStatement->execute($parameters);
+        $totalRecords = (int) $countStatement->fetchColumn();
+
+        ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
+        $statement = $pdo->prepare("SELECT * FROM accounts $whereSql ORDER BY account_code LIMIT $perPage OFFSET $offset");
         $statement->execute($parameters);
         $accounts = $statement->fetchAll();
     } catch (PDOException $exception) {
@@ -245,6 +252,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 <section class="content-panel mb-4">
     <div class="panel-body">
         <form method="get" action="index.php" class="row g-2 align-items-end">
+            <?php if (isset($perPage)): pagination_preserve_per_page_field($perPage); endif; ?>
             <div class="col-md-5">
                 <label class="form-label" for="search">Search</label>
                 <input class="form-control" id="search" name="search" placeholder="Account code or name" value="<?= h($search) ?>">
@@ -259,7 +267,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </select>
             </div>
             <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button>
+                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button>
                 <a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a>
             </div>
         </form>
@@ -272,26 +280,32 @@ require __DIR__ . '/../../shared/includes/header.php';
         <a class="btn btn-primary btn-sm" href="index.php?action=add">Add account</a>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>Code</th><th>Account name</th><th>Type</th><th>Description</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 10%"><col style="width: 20%"><col style="width: 14%">
+                <col style="width: 32%"><col style="width: 10%"><col style="width: 14%">
+            </colgroup>
+            <thead><tr><th scope="col">Code</th><th scope="col">Account name</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
                 <?php if ($accounts === []): ?>
                     <tr><td colspan="6" class="text-center text-secondary py-4">No accounts match the current filters.</td></tr>
                 <?php else: ?>
                     <?php foreach ($accounts as $account): ?>
                         <tr>
-                            <td><?= h($account['account_code']) ?></td>
-                            <td><?= h($account['account_name']) ?></td>
-                            <td><?= h($account['account_type']) ?></td>
-                            <td><?= h($account['description'] ?: '—') ?></td>
-                            <td><span class="badge text-bg-<?= $account['status'] === 'Active' ? 'success' : 'secondary' ?>"><?= h($account['status']) ?></span></td>
-                            <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $account['account_id'] ?>">Edit</a>
-                                <form method="post" action="index.php?action=toggle_status" class="d-inline" onsubmit="return confirm('<?= $account['status'] === 'Active' ? 'Deactivate' : 'Reactivate' ?> this account?');">
-                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                    <input type="hidden" name="account_id" value="<?= (int) $account['account_id'] ?>">
-                                    <button class="btn btn-sm btn-outline-secondary" type="submit"><?= $account['status'] === 'Active' ? 'Deactivate' : 'Reactivate' ?></button>
-                                </form>
+                            <td><span class="cell-id" title="<?= h($account['account_code']) ?>"><?= h($account['account_code']) ?></span></td>
+                            <td class="cell-wrap"><?= h($account['account_name']) ?></td>
+                            <td class="cell-wrap"><?= h($account['account_type']) ?></td>
+                            <td class="cell-clamp" title="<?= h($account['description'] ?? '') ?>"><?= h($account['description'] ?: '—') ?></td>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= $account['status'] === 'Active' ? 'success' : 'secondary' ?>"><?= h($account['status']) ?></span></td>
+                            <td class="text-end">
+                                <div class="d-flex flex-wrap justify-content-end gap-1">
+                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $account['account_id'] ?>">Edit</a>
+                                    <form method="post" action="index.php?action=toggle_status" class="d-inline" onsubmit="return confirm('<?= $account['status'] === 'Active' ? 'Deactivate' : 'Reactivate' ?> this account?');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="account_id" value="<?= (int) $account['account_id'] ?>">
+                                        <button class="btn btn-sm btn-outline-secondary" type="submit"><?= $account['status'] === 'Active' ? 'Deactivate' : 'Reactivate' ?></button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -299,5 +313,6 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

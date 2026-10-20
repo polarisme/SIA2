@@ -37,15 +37,13 @@ function format_qty(float $value): string
 }
 
 /**
- * Splits a stored "[DEMO] Status — reason" string into its parts using the
- * row's own (reliable) recommendation_status column as the known label to
- * strip, rather than re-parsing free text. Returns ['is_demo' => bool,
- * 'reason' => string].
+ * Splits a stored "Status — reason" string using the row's own (reliable)
+ * recommendation_status column as the known label to strip, rather than
+ * re-parsing free text. Returns the reason text alone.
  */
-function replenishment_parse_recommendation(string $recommendation, ?string $knownStatus): array
+function replenishment_parse_recommendation(string $recommendation, ?string $knownStatus): string
 {
-    $isDemo = str_starts_with($recommendation, '[DEMO] ');
-    $text = $isDemo ? substr($recommendation, 7) : $recommendation;
+    $text = $recommendation;
     if ($knownStatus !== null) {
         $prefix = $knownStatus . ' — ';
         if (str_starts_with($text, $prefix)) {
@@ -53,7 +51,7 @@ function replenishment_parse_recommendation(string $recommendation, ?string $kno
         }
     }
 
-    return ['is_demo' => $isDemo, 'reason' => $text];
+    return $text;
 }
 
 /** Precomputes every display value needed for one analysis row, shared by the table and the mobile-card rendering. */
@@ -61,7 +59,7 @@ function replenishment_row_view(array $row): array
 {
     $status = (string) ($row['recommendation_status'] ?? 'Replenishment Recommended');
     $urgency = replenishment_urgency_badge($status);
-    $parsed = replenishment_parse_recommendation((string) $row['recommendation'], $row['recommendation_status']);
+    $reason = replenishment_parse_recommendation((string) $row['recommendation'], $row['recommendation_status']);
     $estimatedCost = (float) $row['estimated_cost'];
     $availableBudget = (float) $row['available_budget'];
     $overBudget = $estimatedCost > $availableBudget;
@@ -71,8 +69,8 @@ function replenishment_row_view(array $row): array
         'status' => $status,
         'urgency_class' => $urgency['class'],
         'urgency_icon' => $urgency['icon'],
-        'is_demo' => $parsed['is_demo'],
-        'reason' => $parsed['reason'],
+        'accent_class' => replenishment_urgency_accent_class($status),
+        'reason' => $reason,
         'over_budget' => $overBudget,
         'budget_diff' => abs($estimatedCost - $availableBudget),
         'workflow_class' => replenishment_workflow_badge((string) $row['status']),
@@ -162,7 +160,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
 
 $items = [];
 $analyses = [];
+$analysesTotal = 0;
 $cashPosition = 0.0;
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 if ($pdo instanceof PDO) {
     try {
         $items = $pdo->query(
@@ -183,11 +183,16 @@ if ($pdo instanceof PDO) {
              FROM financial_transactions WHERE status <> 'Cancelled' AND deleted_at IS NULL"
         )->fetchColumn();
 
+        $analysesTotal = (int) $pdo->query(
+            "SELECT COUNT(*) FROM inventory_replenishment r WHERE r.deleted_at IS NULL"
+        )->fetchColumn();
+
         $analyses = $pdo->query(
             "SELECT r.*, i.item_code, i.item_name, i.category, i.quantity AS live_quantity, i.reorder_level AS live_reorder_level
              FROM inventory_replenishment r JOIN poultry_inventory i ON i.item_id = r.item_id
              WHERE r.deleted_at IS NULL
-             ORDER BY FIELD(r.recommendation_status, 'High Priority Replenishment', 'Insufficient Budget', 'Replenishment Recommended', 'Sufficient Stock'), r.created_at DESC"
+             ORDER BY FIELD(r.recommendation_status, 'High Priority Replenishment', 'Insufficient Budget', 'Replenishment Recommended', 'Sufficient Stock'), r.created_at DESC
+             LIMIT $perPage OFFSET $offset"
         )->fetchAll();
     } catch (PDOException $exception) {
         error_log('Integrated replenishment list query failed: ' . $exception->getMessage());
@@ -281,10 +286,10 @@ require __DIR__ . '/../../shared/includes/header.php';
     <div class="panel-body">
         <div class="small text-secondary mb-2 fw-semibold">Urgency legend</div>
         <div class="d-flex flex-wrap gap-3">
-            <span class="badge text-bg-danger"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> High Priority Replenishment</span>
-            <span class="badge text-bg-warning text-dark"><i class="bi bi-cash-coin" aria-hidden="true"></i> Insufficient Budget</span>
-            <span class="badge text-bg-primary"><i class="bi bi-cart-plus" aria-hidden="true"></i> Replenishment Recommended</span>
-            <span class="badge text-bg-success"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Sufficient Stock</span>
+            <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> High Priority Replenishment</span>
+            <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle"><i class="bi bi-cash-coin" aria-hidden="true"></i> Insufficient Budget</span>
+            <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle"><i class="bi bi-cart-plus" aria-hidden="true"></i> Replenishment Recommended</span>
+            <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Sufficient Stock</span>
         </div>
     </div>
 </div>
@@ -297,7 +302,7 @@ require __DIR__ . '/../../shared/includes/header.php';
     <?php else: ?>
         <!-- Desktop/tablet (>=992px): fixed-layout table, no horizontal scroll -->
         <div class="d-none d-lg-block">
-            <table class="table table-hover mb-0 replenishment-table">
+            <table class="table table-hover table-sm mb-0 replenishment-table table-compact">
                 <thead>
                     <tr>
                         <th style="width: 20%">Item</th>
@@ -311,11 +316,10 @@ require __DIR__ . '/../../shared/includes/header.php';
                 <tbody>
                     <?php foreach ($analyses as $row): ?>
                         <?php $view = replenishment_row_view($row); ?>
-                        <tr class="border-start border-4 border-<?= h(explode(' ', $view['urgency_class'])[0]) ?>">
+                        <tr class="replenishment-row <?= h($view['accent_class']) ?>">
                             <td>
                                 <div class="fw-bold"><?= h($row['item_name']) ?></div>
                                 <div class="small text-secondary"><?= h($row['item_code']) ?> &middot; <?= h($row['category']) ?></div>
-                                <?php if ($view['is_demo']): ?><span class="badge text-bg-light text-secondary border mt-1">DEMO</span><?php endif; ?>
                             </td>
                             <td>
                                 <div>Current: <?= format_qty((float) $row['live_quantity']) ?></div>
@@ -327,33 +331,35 @@ require __DIR__ . '/../../shared/includes/header.php';
                             </td>
                             <td>
                                 <div><?= format_qty((float) $row['recommended_quantity']) ?> &times; ₱<?= money($row['unit_price']) ?> = ₱<?= money($row['estimated_cost']) ?></div>
-                                <div class="small text-secondary">Budget: ₱<?= money($row['available_budget']) ?></div>
+                                <div class="small text-secondary">Stated budget: ₱<?= money($row['available_budget']) ?></div>
                                 <?php if ($view['over_budget']): ?>
-                                    <div class="small text-danger fw-semibold">Over budget by ₱<?= money($view['budget_diff']) ?></div>
+                                    <div class="small text-danger-emphasis fw-semibold">Budget check: ₱<?= money($view['budget_diff']) ?> over</div>
                                 <?php else: ?>
-                                    <div class="small text-success fw-semibold">Within budget</div>
+                                    <div class="small text-success-emphasis fw-semibold">Budget check: within budget</div>
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <span class="badge text-bg-<?= h($view['urgency_class']) ?>"><i class="bi <?= h($view['urgency_icon']) ?>" aria-hidden="true"></i> <?= h($view['status']) ?></span>
+                                <span class="<?= h(replenishment_urgency_badge_class($view['urgency_class'])) ?>"><i class="bi <?= h($view['urgency_icon']) ?>" aria-hidden="true"></i> <?= h($view['status']) ?></span>
                                 <p class="replenishment-reason mt-1 mb-0"><?= h($view['reason']) ?></p>
                             </td>
                             <td>
-                                <span class="badge <?= h($view['workflow_class']) ?> mb-2 d-inline-block">Workflow: <?= h($row['status']) ?></span>
-                                <form method="post" action="index.php?action=update_status" class="d-inline-flex gap-1 d-print-none">
-                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                    <input type="hidden" name="replenishment_id" value="<?= (int) $row['replenishment_id'] ?>">
-                                    <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
-                                        <?php foreach (INTEGRATED_REPLENISHMENT_STATUSES as $statusOption): ?>
-                                            <option value="<?= h($statusOption) ?>" <?= $row['status'] === $statusOption ? 'selected' : '' ?>><?= h($statusOption) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </form>
-                                <form method="post" action="index.php?action=delete" class="d-inline d-print-none" onsubmit="return confirm('Move this replenishment analysis to the Recycle Bin?\nIt can be restored later.');">
-                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                    <input type="hidden" name="replenishment_id" value="<?= (int) $row['replenishment_id'] ?>">
-                                    <button class="btn btn-sm btn-outline-danger mt-1" type="submit">Remove</button>
-                                </form>
+                                <div class="d-flex flex-column align-items-start gap-2">
+                                    <span class="badge <?= h($view['workflow_class']) ?> d-inline-block">Workflow: <?= h($row['status']) ?></span>
+                                    <form method="post" action="index.php?action=update_status" class="d-flex gap-1 d-print-none">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="replenishment_id" value="<?= (int) $row['replenishment_id'] ?>">
+                                        <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                                            <?php foreach (INTEGRATED_REPLENISHMENT_STATUSES as $statusOption): ?>
+                                                <option value="<?= h($statusOption) ?>" <?= $row['status'] === $statusOption ? 'selected' : '' ?>><?= h($statusOption) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </form>
+                                    <form method="post" action="index.php?action=delete" class="d-print-none" onsubmit="return confirm('Move this replenishment analysis to the Recycle Bin?\nIt can be restored later.');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="replenishment_id" value="<?= (int) $row['replenishment_id'] ?>">
+                                        <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-trash3" aria-hidden="true"></i> Remove</button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -365,15 +371,14 @@ require __DIR__ . '/../../shared/includes/header.php';
         <div class="d-lg-none">
             <?php foreach ($analyses as $row): ?>
                 <?php $view = replenishment_row_view($row); ?>
-                <div class="replenishment-card border-start border-4 border-<?= h(explode(' ', $view['urgency_class'])[0]) ?> p-3 border-bottom">
+                <div class="replenishment-card <?= h($view['accent_class']) ?> p-3 border-bottom">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <div class="fw-bold"><?= h($row['item_name']) ?></div>
                             <div class="small text-secondary"><?= h($row['item_code']) ?> &middot; <?= h($row['category']) ?></div>
                         </div>
-                        <?php if ($view['is_demo']): ?><span class="badge text-bg-light text-secondary border">DEMO</span><?php endif; ?>
                     </div>
-                    <div class="mt-2"><span class="badge text-bg-<?= h($view['urgency_class']) ?>"><i class="bi <?= h($view['urgency_icon']) ?>" aria-hidden="true"></i> <?= h($view['status']) ?></span></div>
+                    <div class="mt-2"><span class="<?= h(replenishment_urgency_badge_class($view['urgency_class'])) ?>"><i class="bi <?= h($view['urgency_icon']) ?>" aria-hidden="true"></i> <?= h($view['status']) ?></span></div>
                     <p class="replenishment-reason mt-1 mb-2"><?= h($view['reason']) ?></p>
                     <dl class="row small mb-2">
                         <dt class="col-6">Current stock</dt><dd class="col-6 text-end"><?= format_qty((float) $row['live_quantity']) ?></dd>
@@ -381,12 +386,12 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <dt class="col-6">Expected demand</dt><dd class="col-6 text-end"><?= format_qty((float) $row['expected_demand']) ?></dd>
                         <dt class="col-6">Recommended qty</dt><dd class="col-6 text-end fw-bold"><?= format_qty((float) $row['recommended_quantity']) ?></dd>
                         <dt class="col-6">Estimated cost</dt><dd class="col-6 text-end">₱<?= money($row['estimated_cost']) ?></dd>
-                        <dt class="col-6">Available budget</dt><dd class="col-6 text-end">₱<?= money($row['available_budget']) ?></dd>
+                        <dt class="col-6">Stated budget</dt><dd class="col-6 text-end">₱<?= money($row['available_budget']) ?></dd>
                     </dl>
                     <?php if ($view['over_budget']): ?>
-                        <div class="small text-danger fw-semibold mb-2">Over budget by ₱<?= money($view['budget_diff']) ?></div>
+                        <div class="small text-danger-emphasis fw-semibold mb-2">Budget check: ₱<?= money($view['budget_diff']) ?> over</div>
                     <?php else: ?>
-                        <div class="small text-success fw-semibold mb-2">Within budget</div>
+                        <div class="small text-success-emphasis fw-semibold mb-2">Budget check: within budget</div>
                     <?php endif; ?>
                     <span class="badge <?= h($view['workflow_class']) ?> d-inline-block mb-2">Workflow: <?= h($row['status']) ?></span>
                     <div class="d-flex gap-2 d-print-none">
@@ -402,12 +407,13 @@ require __DIR__ . '/../../shared/includes/header.php';
                         <form method="post" action="index.php?action=delete" onsubmit="return confirm('Move this replenishment analysis to the Recycle Bin?\nIt can be restored later.');">
                             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                             <input type="hidden" name="replenishment_id" value="<?= (int) $row['replenishment_id'] ?>">
-                            <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                            <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-trash3" aria-hidden="true"></i> Remove</button>
                         </form>
                     </div>
                 </div>
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
+    <?php render_pagination_controls($pageNum, $perPage, $analysesTotal, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

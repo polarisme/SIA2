@@ -465,10 +465,17 @@ $whereSql = 'WHERE ' . implode(' AND ', $conditions);
 
 $records = [];
 $summary = ['count' => 0, 'outstanding' => 0.0, 'overdue' => 0.0];
+$totalRecords = 0;
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
+        $countStatement = $pdo->prepare("SELECT COUNT(*) FROM accounts_receivable $whereSql");
+        $countStatement->execute($parameters);
+        $totalRecords = (int) $countStatement->fetchColumn();
+
+        ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
         $statement = $pdo->prepare(
-            "SELECT *, ($statusSql) AS live_status FROM accounts_receivable $whereSql ORDER BY due_date ASC"
+            "SELECT *, ($statusSql) AS live_status FROM accounts_receivable $whereSql ORDER BY due_date ASC LIMIT $perPage OFFSET $offset"
         );
         $statement->execute($parameters);
         $records = $statement->fetchAll();
@@ -519,6 +526,7 @@ require __DIR__ . '/../../shared/includes/header.php';
 <section class="content-panel mb-4">
     <div class="panel-body">
         <form method="get" action="index.php" class="row g-2 align-items-end">
+            <?php if (isset($perPage)): pagination_preserve_per_page_field($perPage); endif; ?>
             <div class="col-md-5">
                 <label class="form-label" for="search">Search</label>
                 <input class="form-control" id="search" name="search" placeholder="Customer name or invoice number" value="<?= h($search) ?>">
@@ -533,7 +541,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </select>
             </div>
             <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button>
+                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button>
                 <a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a>
             </div>
         </form>
@@ -546,25 +554,31 @@ require __DIR__ . '/../../shared/includes/header.php';
         <a class="btn btn-primary btn-sm" href="index.php?action=add">Add receivable</a>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>Customer</th><th>Invoice #</th><th>Invoice date</th><th>Due date</th><th class="text-end">Amount due</th><th class="text-end">Amount paid</th><th class="text-end">Balance</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 16%"><col style="width: 12%"><col style="width: 10%"><col style="width: 10%">
+                <col style="width: 10%"><col style="width: 10%"><col style="width: 10%"><col style="width: 9%"><col style="width: 13%">
+            </colgroup>
+            <thead><tr><th scope="col">Customer</th><th scope="col">Invoice #</th><th scope="col">Invoice date</th><th scope="col">Due date</th><th scope="col" class="text-end">Amount due</th><th scope="col" class="text-end">Amount paid</th><th scope="col" class="text-end">Balance</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
                 <?php if ($records === []): ?>
                     <tr><td colspan="9" class="text-center text-secondary py-4">No receivable records match the current filters.</td></tr>
                 <?php else: ?>
                     <?php foreach ($records as $record): ?>
                         <tr>
-                            <td><?= h($record['customer_name']) ?></td>
-                            <td><?= h($record['invoice_number'] ?: '—') ?></td>
-                            <td><?= h($record['invoice_date']) ?></td>
-                            <td><?= h($record['due_date']) ?></td>
+                            <td class="cell-wrap"><?= h($record['customer_name']) ?></td>
+                            <td><span class="cell-id" title="<?= h($record['invoice_number'] ?: '—') ?>"><?= h($record['invoice_number'] ?: '—') ?></span></td>
+                            <td><span class="cell-id" title="<?= h($record['invoice_date']) ?>"><?= h($record['invoice_date']) ?></span></td>
+                            <td><span class="cell-id" title="<?= h($record['due_date']) ?>"><?= h($record['due_date']) ?></span></td>
                             <td class="text-end">₱<?= money($record['amount_due']) ?></td>
                             <td class="text-end">₱<?= money($record['amount_paid']) ?></td>
                             <td class="text-end">₱<?= money($record['balance']) ?></td>
-                            <td><span class="badge text-bg-<?= h(ar_ap_status_badge($record['live_status'])) ?>"><?= h($record['live_status']) ?></span></td>
-                            <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['ar_id'] ?>">View</a>
-                                <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['ar_id'] ?>">Edit</a>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= h(ar_ap_status_badge($record['live_status'])) ?>"><?= h($record['live_status']) ?></span></td>
+                            <td class="text-end">
+                                <div class="d-flex flex-wrap justify-content-end gap-1">
+                                    <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['ar_id'] ?>">View</a>
+                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['ar_id'] ?>">Edit</a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -572,5 +586,6 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php if (isset($totalRecords, $pageNum, $perPage)): render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); endif; ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

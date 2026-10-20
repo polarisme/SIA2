@@ -26,12 +26,10 @@ $systemFilter = trim((string) ($_GET['system_filter'] ?? ''));
 $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
 $dateTo = trim((string) ($_GET['date_to'] ?? ''));
 $sort = (string) ($_GET['sort'] ?? 'event_time_desc');
-$page = max(1, (int) ($_GET['page'] ?? 1));
-$perPage = 25;
+['page' => $page, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
 
 $events = [];
 $totalRows = 0;
-$totalPages = 1;
 
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
@@ -73,9 +71,6 @@ if ($pdo instanceof PDO && $databaseError === null) {
             $countStatement = $pdo->prepare("SELECT COUNT(*) FROM user_management_audit_log $whereClause");
             $countStatement->execute($parameters);
             $totalRows = (int) $countStatement->fetchColumn();
-            $totalPages = max(1, (int) ceil($totalRows / $perPage));
-            $page = min($page, $totalPages);
-            $offset = ($page - 1) * $perPage;
 
             $listStatement = $pdo->prepare(
                 "SELECT * FROM user_management_audit_log $whereClause ORDER BY $orderBy LIMIT $perPage OFFSET $offset"
@@ -122,9 +117,6 @@ if ($pdo instanceof PDO && $databaseError === null) {
             $countStatement = $pdo->prepare("SELECT COUNT(*) FROM pms_audit_log $whereClause");
             $countStatement->execute($parameters);
             $totalRows = (int) $countStatement->fetchColumn();
-            $totalPages = max(1, (int) ceil($totalRows / $perPage));
-            $page = min($page, $totalPages);
-            $offset = ($page - 1) * $perPage;
 
             $listStatement = $pdo->prepare(
                 "SELECT * FROM pms_audit_log $whereClause ORDER BY $orderBy LIMIT $perPage OFFSET $offset"
@@ -136,14 +128,6 @@ if ($pdo instanceof PDO && $databaseError === null) {
         error_log('Audit trail query failed: ' . $exception->getMessage());
         $databaseError = 'The audit trail could not be loaded because of a database error.';
     }
-}
-
-function audit_query_string(array $overrides = []): string
-{
-    $params = array_merge($_GET, $overrides);
-    $params = array_filter($params, static fn ($value) => $value !== '' && $value !== null);
-
-    return http_build_query($params);
 }
 
 require __DIR__ . '/../includes/header.php';
@@ -168,6 +152,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="panel-body">
         <form method="get" action="audit-trail.php" class="row g-2 align-items-end">
             <input type="hidden" name="tab" value="<?= h($tab) ?>">
+            <?php pagination_preserve_per_page_field($perPage); ?>
             <div class="col-md-3">
                 <label class="form-label" for="search">Search</label>
                 <input class="form-control" id="search" name="search" value="<?= h($search) ?>" placeholder="<?= $tab === 'account' ? 'Actor, target, description' : 'Username' ?>">
@@ -224,7 +209,11 @@ require __DIR__ . '/../includes/header.php';
     </div>
     <div class="table-responsive">
         <?php if ($tab === 'account'): ?>
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 13%"><col style="width: 12%"><col style="width: 11%"><col style="width: 12%">
+                    <col style="width: 10%"><col style="width: 30%"><col style="width: 12%">
+                </colgroup>
                 <thead><tr><th>Date / Time</th><th>Actor</th><th>Action</th><th>Target</th><th>System</th><th>Description</th><th>IP Address</th></tr></thead>
                 <tbody>
                     <?php if ($events === []): ?>
@@ -232,20 +221,24 @@ require __DIR__ . '/../includes/header.php';
                     <?php else: ?>
                         <?php foreach ($events as $event): ?>
                             <tr>
-                                <td class="text-nowrap"><?= h((string) $event['event_time']) ?></td>
-                                <td><?= h($event['actor_username'] ?? '—') ?></td>
-                                <td><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
-                                <td><?= h($event['target_username'] ?? '—') ?></td>
-                                <td><?= $event['system_context'] ? h(SYSTEM_LABELS[$event['system_context']] ?? $event['system_context']) : '—' ?></td>
-                                <td><?= h($event['description'] ?? '') ?></td>
-                                <td><?= h($event['ip_address'] ?? '—') ?></td>
+                                <td><span class="cell-id" title="<?= h((string) $event['event_time']) ?>"><?= h((string) $event['event_time']) ?></span></td>
+                                <td><span class="cell-id" title="<?= h($event['actor_username'] ?? '—') ?>"><?= h($event['actor_username'] ?? '—') ?></span></td>
+                                <td class="cell-wrap"><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
+                                <td><span class="cell-id" title="<?= h($event['target_username'] ?? '—') ?>"><?= h($event['target_username'] ?? '—') ?></span></td>
+                                <td class="cell-wrap"><?= $event['system_context'] ? h(SYSTEM_LABELS[$event['system_context']] ?? $event['system_context']) : '—' ?></td>
+                                <td class="cell-clamp" title="<?= h($event['description'] ?? '') ?>"><?= h($event['description'] ?? '') ?></td>
+                                <td><span class="cell-id" title="<?= h($event['ip_address'] ?? '—') ?>"><?= h($event['ip_address'] ?? '—') ?></span></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>
             </table>
         <?php else: ?>
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0 table-compact">
+                <colgroup>
+                    <col style="width: 18%"><col style="width: 16%"><col style="width: 12%">
+                    <col style="width: 16%"><col style="width: 24%"><col style="width: 14%">
+                </colgroup>
                 <thead><tr><th>Date / Time</th><th>User</th><th>Action</th><th>System</th><th>Table</th><th>Record ID</th></tr></thead>
                 <tbody>
                     <?php if ($events === []): ?>
@@ -253,11 +246,11 @@ require __DIR__ . '/../includes/header.php';
                     <?php else: ?>
                         <?php foreach ($events as $event): ?>
                             <tr>
-                                <td class="text-nowrap"><?= h((string) $event['action_at']) ?></td>
-                                <td><?= h($event['username']) ?></td>
-                                <td><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
-                                <td><?= h(SYSTEM_LABELS[TABLE_SYSTEM_MAP[$event['table_name']] ?? ''] ?? '—') ?></td>
-                                <td><?= h($event['table_name']) ?></td>
+                                <td><span class="cell-id" title="<?= h((string) $event['action_at']) ?>"><?= h((string) $event['action_at']) ?></span></td>
+                                <td><span class="cell-id" title="<?= h($event['username']) ?>"><?= h($event['username']) ?></span></td>
+                                <td class="cell-wrap"><span class="badge text-bg-secondary"><?= h($event['action']) ?></span></td>
+                                <td class="cell-wrap"><?= h(SYSTEM_LABELS[TABLE_SYSTEM_MAP[$event['table_name']] ?? ''] ?? '—') ?></td>
+                                <td><span class="cell-id" title="<?= h($event['table_name']) ?>"><?= h($event['table_name']) ?></span></td>
                                 <td><?= (int) $event['record_id'] ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -266,18 +259,6 @@ require __DIR__ . '/../includes/header.php';
             </table>
         <?php endif; ?>
     </div>
-    <?php if ($totalPages > 1): ?>
-        <div class="panel-body">
-            <nav aria-label="Audit trail pagination">
-                <ul class="pagination pagination-sm mb-0">
-                    <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-                        <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                            <a class="page-link" href="audit-trail.php?<?= h(audit_query_string(['page' => $p])) ?>"><?= $p ?></a>
-                        </li>
-                    <?php endfor; ?>
-                </ul>
-            </nav>
-        </div>
-    <?php endif; ?>
+    <?php render_pagination_controls($page, $perPage, $totalRows, $_GET, 'audit-trail.php'); ?>
 </section>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

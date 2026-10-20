@@ -74,6 +74,12 @@ if ($pdo instanceof PDO) {
     }
 }
 
+// The "above average" comparison needs every flock's figures, so $flockRows above is
+// never truncated — pagination here only slices which rows the two tables below display.
+$totalRecords = count($flockRows);
+['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+$flockRowsPage = array_slice($flockRows, $offset, $perPage);
+
 $pageBodyClass = 'page-cost-efficiency';
 $printReportTitle = 'YIELD — Cost Efficiency Analytics Report';
 require __DIR__ . '/../../shared/includes/header.php';
@@ -88,16 +94,20 @@ require __DIR__ . '/../../shared/includes/header.php';
 
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">Cost per Batch</h2></div>
-    <div>
-        <table class="table table-hover mb-0">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 20%"><col style="width: 11%"><col style="width: 12%"><col style="width: 11%">
+                <col style="width: 12%"><col style="width: 14%"><col style="width: 10%"><col style="width: 10%">
+            </colgroup>
             <thead><tr><th>Batch</th><th class="text-end">Current Birds</th><th class="text-end">Total Cost</th><th class="text-end">Cost per Bird</th><th class="text-end">Eggs Produced</th><th class="text-end">Cost per 100 Eggs</th><th class="text-end">Activities Completed</th><th class="text-end">Health Incidents</th></tr></thead>
             <tbody>
-                <?php if ($flockRows === []): ?>
+                <?php if ($flockRowsPage === []): ?>
                     <tr><td colspan="8" class="text-center text-secondary py-4">No flocks found.</td></tr>
                 <?php else: ?>
-                    <?php foreach ($flockRows as $row): ?>
+                    <?php foreach ($flockRowsPage as $row): ?>
                         <tr>
-                            <td><?= h($row['flock']['batch_code']) ?> <span class="badge text-bg-secondary"><?= h($row['flock']['status']) ?></span></td>
+                            <td><span class="cell-id" title="<?= h($row['flock']['batch_code']) ?>"><?= h($row['flock']['batch_code']) ?></span> <span class="badge text-bg-secondary"><?= h($row['flock']['status']) ?></span></td>
                             <td class="text-end"><?= number_format((int) $row['flock']['current_birds']) ?></td>
                             <td class="text-end">₱<?= money($row['financials']['total_cost']) ?></td>
                             <td class="text-end"><?= $row['cost_per_bird_total'] === null ? '—' : '₱' . money($row['cost_per_bird_total']) ?></td>
@@ -118,13 +128,17 @@ require __DIR__ . '/../../shared/includes/header.php';
 
 <section class="content-panel mb-4">
     <div class="panel-heading"><h2 class="h5 mb-0">Cost Distribution by Category (per batch, cost per bird)</h2></div>
-    <div>
-        <table class="table table-sm mb-0">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 16%">
+                <?php foreach (INTEGRATED_COST_CATEGORIES as $category): ?><col style="width: 12%"><?php endforeach; ?>
+            </colgroup>
             <thead><tr><th>Batch</th><?php foreach (INTEGRATED_COST_CATEGORIES as $category): ?><th class="text-end"><?= h($category) ?></th><?php endforeach; ?></tr></thead>
             <tbody>
-                <?php foreach ($flockRows as $row): ?>
+                <?php foreach ($flockRowsPage as $row): ?>
                     <tr>
-                        <td><?= h($row['flock']['batch_code']) ?></td>
+                        <td><span class="cell-id" title="<?= h($row['flock']['batch_code']) ?>"><?= h($row['flock']['batch_code']) ?></span></td>
                         <?php foreach (INTEGRATED_COST_CATEGORIES as $category): ?>
                             <?php
                             $flockId = (int) $row['flock']['flock_id'];
@@ -157,8 +171,9 @@ require __DIR__ . '/../../shared/includes/header.php';
     </div>
     <div class="panel-body d-print-none">
         <p class="small text-secondary mb-0">
-            "Above average" is flagged only when a batch's cost-per-bird for a category is more than 1.5&times; the average of at least 2 other comparable batches with recorded cost in that category — this is a transparent, fixed rule, not a claim of inefficiency. A high absolute cost alone does not trigger this flag; only a high cost relative to batch size does.
+            "Above average" is flagged only when a batch's cost-per-bird for a category is more than 1.5&times; the average of at least 2 other comparable batches with recorded cost in that category — this is a transparent, fixed rule, not a claim of inefficiency. A high absolute cost alone does not trigger this flag; only a high cost relative to batch size does. The average always accounts for every batch regardless of the page shown below.
         </p>
     </div>
+    <?php render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

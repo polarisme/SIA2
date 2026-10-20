@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             $pdo->prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE user_id = ?')->execute([$user['user_id']]);
             user_management_log_event($pdo, 'LOGIN', $user['username'], $user['username'], $activeSystem, 'Signed in to ' . $systemBranding['name'] . '.');
-            set_flash('success', 'Signed in as ' . $user['username'] . '.');
+            set_flash('success', 'Signed in as ' . $user['username'] . '.', true);
             redirect_to($destination);
         }
 

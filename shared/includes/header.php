@@ -37,7 +37,7 @@ $flash = take_flash();
         </div>
     </div>
 </header>
-<main class="container-fluid app-width py-4 py-lg-5">
+<main class="container-fluid app-width py-3 py-lg-4">
     <?php if (isset($printReportTitle)): ?>
         <div class="print-report-header">
             <h1><?= h($printReportTitle) ?></h1>
@@ -46,8 +46,25 @@ $flash = take_flash();
     <?php endif; ?>
     <?php if ($flash !== null): ?>
         <?php $alertType = in_array($flash['type'], ['success', 'danger', 'warning', 'info'], true) ? $flash['type'] : 'info'; ?>
-        <div class="alert alert-<?= h($alertType) ?> alert-dismissible fade show" role="alert">
-            <?= h($flash['message']) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+        <?php if (!empty($flash['toast'])): ?>
+            <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+                <div id="flashToast" class="toast align-items-center text-bg-<?= h($alertType) ?> border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="2000" data-bs-autohide="true">
+                    <div class="d-flex">
+                        <div class="toast-body"><?= h($flash['message']) ?></div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var flashToastEl = document.getElementById('flashToast');
+                    if (flashToastEl && window.bootstrap) { new bootstrap.Toast(flashToastEl).show(); }
+                });
+            </script>
+        <?php else: ?>
+            <div class="alert alert-<?= h($alertType) ?> alert-dismissible fade show" role="alert">
+                <?= h($flash['message']) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
     <?php endif; ?>

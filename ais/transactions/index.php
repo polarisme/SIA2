@@ -530,10 +530,17 @@ $orderSql = match ($sort) {
 $records = [];
 $categories = [];
 $totalsRow = ['income' => 0.0, 'expense' => 0.0];
+$totalRecords = 0;
 if ($pdo instanceof PDO && $databaseError === null) {
     try {
+        $countStatement = $pdo->prepare("SELECT COUNT(*) FROM financial_transactions t $whereSql");
+        $countStatement->execute($parameters);
+        $totalRecords = (int) $countStatement->fetchColumn();
+
+        ['page' => $pageNum, 'per_page' => $perPage, 'offset' => $offset] = paginate_params();
+
         $statement = $pdo->prepare(
-            "SELECT t.*, f.batch_code FROM financial_transactions t LEFT JOIN flocks f ON f.flock_id = t.flock_id $whereSql $orderSql"
+            "SELECT t.*, f.batch_code FROM financial_transactions t LEFT JOIN flocks f ON f.flock_id = t.flock_id $whereSql $orderSql LIMIT $perPage OFFSET $offset"
         );
         $statement->execute($parameters);
         $records = $statement->fetchAll();
@@ -595,6 +602,7 @@ require __DIR__ . '/../../shared/includes/header.php';
     <div class="panel-heading"><h2 class="h5 mb-0">Search &amp; filter</h2></div>
     <div class="panel-body">
         <form method="get" action="index.php" class="row g-2 align-items-end">
+            <?php if (isset($perPage)): pagination_preserve_per_page_field($perPage); endif; ?>
             <div class="col-md-3">
                 <label class="form-label" for="search">Search</label>
                 <input class="form-control" id="search" name="search" placeholder="Category, description, reference #" value="<?= h($search) ?>">
@@ -642,7 +650,7 @@ require __DIR__ . '/../../shared/includes/header.php';
                 </select>
             </div>
             <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search / Filter</button>
+                <button class="btn btn-outline-primary flex-grow-1" type="submit">Search</button>
                 <a class="btn btn-outline-secondary" href="index.php" title="Clear filters" aria-label="Clear filters">Clear</a>
             </div>
         </form>
@@ -655,25 +663,31 @@ require __DIR__ . '/../../shared/includes/header.php';
         <a class="btn btn-primary btn-sm" href="index.php?action=add<?= $typeFilter !== '' ? '&type=' . h($typeFilter) : '' ?>">Add transaction</a>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th class="text-end">Amount</th><th>Payment</th><th>Flock/Batch</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+        <table class="table table-hover table-sm mb-0 table-compact">
+            <colgroup>
+                <col style="width: 9%"><col style="width: 8%"><col style="width: 12%"><col style="width: 20%">
+                <col style="width: 9%"><col style="width: 10%"><col style="width: 10%"><col style="width: 9%"><col style="width: 13%">
+            </colgroup>
+            <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" class="text-end">Amount</th><th scope="col">Payment</th><th scope="col">Flock/Batch</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
                 <?php if ($records === []): ?>
                     <tr><td colspan="9" class="text-center text-secondary py-4">No transactions match the current filters.</td></tr>
                 <?php else: ?>
                     <?php foreach ($records as $record): ?>
                         <tr>
-                            <td><?= h($record['transaction_date']) ?></td>
-                            <td><span class="badge text-bg-<?= $record['transaction_type'] === 'Income' ? 'success' : 'danger' ?>"><?= h($record['transaction_type']) ?></span></td>
-                            <td><?= h($record['category']) ?></td>
-                            <td><?= h(mb_strimwidth((string) $record['description'], 0, 40, '…')) ?></td>
+                            <td><span class="cell-id" title="<?= h($record['transaction_date']) ?>"><?= h($record['transaction_date']) ?></span></td>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= $record['transaction_type'] === 'Income' ? 'success' : 'danger' ?>"><?= h($record['transaction_type']) ?></span></td>
+                            <td class="cell-wrap"><?= h($record['category']) ?></td>
+                            <td class="cell-clamp" title="<?= h((string) $record['description']) ?>"><?= h((string) $record['description']) ?></td>
                             <td class="text-end">₱<?= money($record['amount']) ?></td>
-                            <td><?= h($record['payment_method']) ?></td>
-                            <td><?= h($record['batch_code'] ?? '—') ?></td>
-                            <td><span class="badge text-bg-<?= h(ais_transaction_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>
-                            <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['transaction_id'] ?>">View</a>
-                                <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['transaction_id'] ?>">Edit</a>
+                            <td class="cell-wrap"><?= h($record['payment_method']) ?></td>
+                            <td><span class="cell-id" title="<?= h($record['batch_code'] ?? '—') ?>"><?= h($record['batch_code'] ?? '—') ?></span></td>
+                            <td class="cell-wrap"><span class="badge text-bg-<?= h(ais_transaction_status_badge($record['status'])) ?>"><?= h($record['status']) ?></span></td>
+                            <td class="text-end">
+                                <div class="d-flex flex-wrap justify-content-end gap-1">
+                                    <a class="btn btn-sm btn-outline-secondary" href="index.php?action=view&amp;id=<?= (int) $record['transaction_id'] ?>">View</a>
+                                    <a class="btn btn-sm btn-outline-primary" href="index.php?action=edit&amp;id=<?= (int) $record['transaction_id'] ?>">Edit</a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -681,5 +695,6 @@ require __DIR__ . '/../../shared/includes/header.php';
             </tbody>
         </table>
     </div>
+    <?php if (isset($totalRecords, $pageNum, $perPage)): render_pagination_controls($pageNum, $perPage, $totalRecords, $_GET, 'index.php'); endif; ?>
 </section>
 <?php require __DIR__ . '/../../shared/includes/footer.php'; ?>

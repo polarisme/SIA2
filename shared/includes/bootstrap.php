@@ -6,10 +6,12 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/pagination.php';
 require_once __DIR__ . '/pms_records.php';
 require_once __DIR__ . '/ais_records.php';
 require_once __DIR__ . '/integrated_records.php';
 require_once __DIR__ . '/user_management_records.php';
+require_once __DIR__ . '/payroll_records.php';
 
 /**
  * Same as app_url(), but appends a `?v=<file mtime>` cache-busting query string
@@ -254,6 +256,7 @@ function audit_pms_action(PDO $pdo, string $action, string $table, int $recordId
         'inventory_adjustments',
         'financial_transactions', 'accounts_receivable', 'accounts_payable', 'transaction_documents', 'accounts',
         'batch_costs', 'inventory_replenishment', 'scenarios',
+        'employees', 'payroll_periods', 'payroll_items',
     ];
     $allowedActions = ['CREATE', 'UPDATE', 'SOFT_DELETE', 'RESTORE', 'PERMANENT_DELETE'];
     if (!in_array($table, $allowedTables, true) || !in_array($action, $allowedActions, true) || $recordId < 1) {
@@ -266,9 +269,15 @@ function audit_pms_action(PDO $pdo, string $action, string $table, int $recordId
     $statement->execute([$action, $table, $recordId, current_username()]);
 }
 
-function set_flash(string $type, string $message): void
+/**
+ * $toast = true renders this as a brief, auto-dismissing toast (shared/includes/header.php)
+ * instead of the normal persistent dismissible banner — use only for notices that merely
+ * confirm something already visible elsewhere (e.g. "Signed in as X", shown in the header
+ * anyway), never for errors, validation messages, or alerts that need to stay until read.
+ */
+function set_flash(string $type, string $message, bool $toast = false): void
 {
-    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message, 'toast' => $toast];
 }
 
 function take_flash(): ?array

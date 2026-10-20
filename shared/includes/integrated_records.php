@@ -265,8 +265,15 @@ const MIN_CORRELATION_SAMPLE = 5;
 /**
  * Urgency (what to DO about an item) and workflow (where the analysis is in
  * the approval process) are deliberately two separate scales, styled so
- * they never compete for attention — urgency uses solid colour + icon,
- * workflow uses neutral/outline styling (see replenishment_workflow_badge()).
+ * they never compete for attention — urgency's own badge uses the "subtle"
+ * variant (see replenishment_urgency_badge_class() below): a light tinted
+ * background with coloured text and a matching border, never a solid fill,
+ * so a list of these never reads as a wall of colour; workflow uses
+ * neutral/outline styling (see replenishment_workflow_badge()). `class` here
+ * is still a plain Bootstrap colour name/pair (e.g. 'danger', 'warning
+ * text-dark'). The row/card's left-edge accent strip is bright/saturated by
+ * design (unlike the muted badge) and uses its own status-keyed modifier
+ * class — see replenishment_urgency_accent_class() below.
  */
 function replenishment_urgency_badge(string $status): array
 {
@@ -276,6 +283,37 @@ function replenishment_urgency_badge(string $status): array
         'Insufficient Budget' => ['class' => 'warning text-dark', 'icon' => 'bi-cash-coin'],
         'High Priority Replenishment' => ['class' => 'danger', 'icon' => 'bi-exclamation-octagon-fill'],
         default => ['class' => 'secondary', 'icon' => 'bi-question-circle'],
+    };
+}
+
+/**
+ * The actual CSS classes for the urgency status badge pill itself — Bootstrap
+ * 5.3's "subtle" colour utilities (light tinted background, coloured text,
+ * matching border), not the solid text-bg-* fill. Takes the same 'class'
+ * value replenishment_urgency_badge() returns (its first word is the colour).
+ */
+function replenishment_urgency_badge_class(string $urgencyClass): string
+{
+    $color = explode(' ', $urgencyClass)[0];
+
+    return "badge rounded-pill bg-{$color}-subtle text-{$color}-emphasis border border-{$color}-subtle";
+}
+
+/**
+ * Semantic modifier class for the thick (6px) left-edge status strip on the
+ * Inventory Replenishment table rows/cards. Deliberately bright/saturated —
+ * the one spot on this page allowed to be — and deliberately a separate
+ * class from the badge's colour-word classes so the strip's jewel-tone
+ * palette can be tuned (see app.css) without touching the badge styling.
+ */
+function replenishment_urgency_accent_class(string $status): string
+{
+    return match ($status) {
+        'High Priority Replenishment' => 'replenishment-row--urgent',
+        'Insufficient Budget' => 'replenishment-row--warning',
+        'Replenishment Recommended' => 'replenishment-row--recommended',
+        'Sufficient Stock' => 'replenishment-row--sufficient',
+        default => '',
     };
 }
 
@@ -291,15 +329,17 @@ function replenishment_urgency_rank(string $status): int
     };
 }
 
-/** Neutral/outline styling for the workflow status, so it never reads as an urgency colour. */
+/** Restrained, pill-shaped styling for the workflow status — Pending stays
+ * neutral; Approved/Completed read as a calm, settled green; Rejected is the
+ * only one that still needs to visually stand out. */
 function replenishment_workflow_badge(string $status): string
 {
     return match ($status) {
-        'Pending' => 'border border-secondary text-secondary bg-white',
-        'Approved' => 'border border-primary text-primary bg-white',
-        'Completed' => 'border border-success text-success bg-white',
-        'Rejected' => 'border border-dark text-dark bg-white text-decoration-line-through',
-        default => 'border border-secondary text-secondary bg-white',
+        'Pending' => 'rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle',
+        'Approved' => 'rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle',
+        'Completed' => 'rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle',
+        'Rejected' => 'rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle text-decoration-line-through',
+        default => 'rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle',
     };
 }
 
