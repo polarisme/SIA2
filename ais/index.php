@@ -471,7 +471,7 @@ require __DIR__ . '/../shared/includes/header.php';
     </div>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="<?= h(versioned_asset_url('/shared/vendor/chartjs/chart.umd.min.js')) ?>"></script>
 <script>
 <?php if ($trend !== []): ?>
 new Chart(document.getElementById('trendChart'), {

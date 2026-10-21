@@ -14,6 +14,15 @@ independent systems that share one login page and one database.
 - Any Apache + PHP + MySQL stack works (WAMP, XAMPP, MAMP, a bare LAMP box).
   This project was built and tested on WAMP64 with Apache + PHP 8.3 + MySQL 8.4.
 
+## Offline use
+
+The system runs fully offline, with no dependency on any CDN or external
+network access at runtime. Bootstrap, Bootstrap Icons, and Chart.js are
+vendored locally under `shared/vendor/` (alongside the existing FPDF library)
+and loaded from there, rather than from `cdn.jsdelivr.net`. A fresh clone of
+this repo, once the database steps below are done, works with no internet
+connection at all.
+
 ## Setup
 
 1. Clone the repo into your server's web root (e.g. `C:\wamp64\www\SIA2` on
